@@ -6,16 +6,18 @@ ArkWork is a complete Software Factory: users submit requirements and review sof
 
 ## Implementation
 
-- React + TypeScript + Vite, Node.js 24. No backend or credentials required for this milestone.
-- Demo state machine advances on a client-side timer. Every simulated operation is labeled. No generated code, test results or PR links are fabricated.
-- Recent 20 runs persist in localStorage. They are local to the browser, not account-synced; storage failures surface a warning. A running demo resumes when the app opens.
-- At most three demos run concurrently. Cancelled runs never advance. Malformed storage is discarded.
+- React + TypeScript + Vite, Node.js 24. The standalone demo still requires no backend. Optional local API mode adds Fastify and a PostgreSQL-compatible persistence layer.
+- `WorkRepository` separates `DemoRepository` (browser timer/storage) and `ApiRepository` (HTTP/SSE). API fixture progress runs on the server, not the browser. Both modes visibly disclose that AI is not connected.
+- Recent 20 demo runs persist in localStorage. Server mode persists work, hashed sessions and ordered events in `.runtime/database` with PGlite; its list returns up to 100 items. No automatic demo-to-server data migration occurs.
+- At most three simulations run concurrently per workspace. Server creation locks workspace rows, requires an idempotency key, and emits events in the same transaction. Cancellation checks the expected state version and is terminal for the fixture.
 - User requirements are rendered as text, not HTML. Downloaded Markdown is a demo handoff, not generated software.
-- Dark responsive layout supports mobile navigation and keyboard focus. No external AI API requests are made.
+- Dark responsive layout supports mobile navigation and keyboard focus. No external AI API requests are made. API mode uses an explicit development identity selector through the client adapter; this is not production authentication or hosting.
+- SSE supports Last-Event-ID/cursor replay, session expiry/revocation and graceful shutdown. List polling supplements SSE. Database migrations use a transaction, advisory lock and recorded checksum.
+- PostgreSQL via `pg` is available behind `DATABASE_URL`; current integration evidence uses the PGlite engine. Multi-process PGlite access is unsupported.
 
 ## Next milestone
 
-Define acceptance criteria and connect a backend with durable job storage, authentication, an agent runner, isolated repository execution, real validation, and a human-reviewed PR workflow. Choose AI provider and credentials then. Do not treat client-side simulation as production execution.
+M1 foundation now has durable local work, project APIs, protected development sessions and event delivery. Production identity, approval/state coverage beyond fixtures, durable external side-effect queue, real agent execution and public hosting remain outstanding. Add GitHub authentication/integration and select an AI provider in M2. Do not treat fixture completion as verified generated software.
 
 ## Handoff
 
