@@ -19,4 +19,6 @@ Define acceptance criteria and connect a backend with durable job storage, authe
 
 ## Handoff
 
-The baseline main commit contains development documentation. The UI is developed on `feat/factory-ui` and must be reviewed via PR before merging. Use the saved cloud environment install/start instructions; do not assume running processes survive a new task.
+The UI was merged through [PR #1](https://github.com/yth1209/ArkWork/pull/1). Current main contains the demo. Use the saved cloud environment install/start instructions; do not assume running processes survive a new task. All follow-up changes require a feature branch and PR; merge only on explicit instruction.
+
+The detailed future product plan is indexed in [docs/README.md](README.md). It does not imply those services are already implemented. Cloud-local servers are not user-facing hosting; externally accessible previews require a separate deployment integration.
