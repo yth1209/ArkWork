@@ -54,6 +54,6 @@ SDK는 API 키와 DB·GitHub 자격 증명을 상속하지 않는 제한된 환�
 CHROMIUM_PATH=/usr/bin/chromium npm run test:codex-smoke
 ```
 
-인증 없음 차단, structured output 검증, API 키 상속 방지, 명시적 호출과 중복 방지, 질문·명세 영속 저장과 계획 hash, 생성 중 수정·승인 차단, 취소·시간 제한·실패 후 무재시도, 만료된 worker 출력 차단을 검증했다. 실제 ChatGPT 로그인과 구독 모델 호출은 현재 환경에서 아직 검증하지 않았다. 로그인 후 별도의 명시적 pilot 호출로 확인해야 한다.
+인증 없음 차단, structured output 검증, API 키 상속 방지, 명시적 호출과 중복 방지, 질문·명세 영속 저장과 계획 hash, 생성 중 수정·승인 차단, 취소·시간 제한·실패 후 무재시도, 만료된 worker 출력 차단을 검증했다. 실제 ChatGPT 로그인과 구독 모델 호출은 현재 환경에서 아직 검증하지 않았다. `npm run codex:login`을 시도했지만 `auth.openai.com` 연결이 egress proxy의 CONNECT 403으로 차단되어 인증 코드가 발급되지 않았다. 환경 설정 초안에 기존 네트워크 규칙을 보존하고 `auth.openai.com`, `chatgpt.com` 허용을 추가했다. 초안 저장은 현재 런타임에 적용되지 않으므로 사용자가 환경 설정을 적용한 뒤 로그인부터 다시 확인해야 한다. 그 후 별도의 명시적 pilot 호출로 모델 동작을 검증한다.
 
 공식 참고: [SDK](https://github.com/openai/codex/tree/main/sdk/typescript), [ChatGPT 로그인](https://github.com/openai/codex#using-codex-with-your-chatgpt-plan), [인증](https://developers.openai.com/codex/auth).
