@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Database } from "./database";
 import { event, toRun, type Row } from "./work";
 import { executionPlan, policyVersion } from "./plans";
+import { respond } from "./human";
 import { FixtureQueue } from "./queue";
 
 export class HttpError extends Error {
@@ -66,6 +67,7 @@ export class Store {
     project: string,
     requirements: string,
     key: string,
+    humanWorkflow = true,
   ) {
     return this.db.transaction(async (tx) => {
       // Serialize creation within a workspace to enforce concurrent limits and idempotency.
@@ -95,10 +97,15 @@ export class Store {
         ).rows.length
       )
         throw new HttpError(404, "NOT_FOUND", "프로젝트를 찾을 수 없습니다.");
-      const { plan, hash } = executionPlan(requirements);
+      const { plan, hash } = executionPlan(
+        requirements,
+        humanWorkflow
+          ? { clarification: "", feedback: "", revision: 0 }
+          : undefined,
+      );
       const result = await tx.query<Row>(
-        `INSERT INTO work_items (id,workspace_id,project_id,requirements,state,idempotency_key,plan_hash,execution_plan,policy_version)
-        VALUES ($1,$2,$3,$4,'awaiting_run_approval',$5,$6,$7,$8) RETURNING *`,
+        `INSERT INTO work_items (id,workspace_id,project_id,requirements,state,idempotency_key,plan_hash,execution_plan,policy_version,human_workflow)
+        VALUES ($1,$2,$3,$4,$10,$5,$6,$7,$8,$9) RETURNING *`,
         [
           randomUUID(),
           workspace,
@@ -108,6 +115,8 @@ export class Store {
           hash,
           JSON.stringify(plan),
           policyVersion,
+          humanWorkflow,
+          humanWorkflow ? "awaiting_input" : "awaiting_run_approval",
         ],
       );
       await event(tx, result.rows[0], workspace, "created");
@@ -145,7 +154,10 @@ export class Store {
           "계획이나 정책이 변경됐습니다. 최신 내용을 다시 확인하세요.",
         );
       const existing = (
-        await tx.query("SELECT * FROM work_approvals WHERE work_id=$1", [id])
+        await tx.query(
+          "SELECT * FROM work_approvals WHERE work_id=$1 AND approved_version=$2",
+          [id, version],
+        )
       ).rows[0];
       if (
         existing &&
@@ -168,7 +180,7 @@ export class Store {
         );
       const count = (
         await tx.query(
-          "SELECT count(*)::int AS count FROM work_items WHERE workspace_id=$1 AND state IN ('queued','running','verifying','cancelling')",
+          "SELECT count(*)::int AS count FROM work_items WHERE workspace_id=$1 AND state IN ('queued','running','verifying','cancelling','awaiting_decision')",
           [workspace],
         )
       ).rows[0];
@@ -191,12 +203,21 @@ export class Store {
         [approvalId, id, workspace, version, planHash, policy, identity],
       );
       await tx.query(
-        "INSERT INTO execution_jobs (work_id,workspace_id,approval_id,status) VALUES ($1,$2,$3,'pending')",
+        "INSERT INTO execution_jobs (work_id,workspace_id,approval_id,status) VALUES ($1,$2,$3,'pending') ON CONFLICT(work_id) DO UPDATE SET approval_id=EXCLUDED.approval_id,status='pending',lease_owner=NULL,lease_until=NULL,generation=execution_jobs.generation+1,attempts=0,resume_pending=false",
         [id, workspace, approvalId],
       );
       const result = await tx.query<Row>(
-        "UPDATE work_items SET state='queued',version=version+1 WHERE id=$1 RETURNING *",
-        [id],
+        "UPDATE work_items SET state='queued',version=version+1,attempt_count=0,human_history=human_history || $2::jsonb WHERE id=$1 RETURNING *",
+        [
+          id,
+          JSON.stringify([
+            {
+              action: "approve_plan",
+              text: "현재 계획을 확인하고 모의 실행을 승인했습니다.",
+              at: new Date().toISOString(),
+            },
+          ]),
+        ],
       );
       await event(tx, result.rows[0], workspace, "approved");
       return { run: toRun(result.rows[0]), replayed: false };
@@ -223,7 +244,7 @@ export class Store {
           "작업 상태가 변경됐습니다. 새로 확인해 주세요.",
         );
       if (["cancelled", "cancelling"].includes(row.state)) return toRun(row);
-      if (["review_ready", "failed"].includes(row.state))
+      if (["review_ready", "completed", "failed"].includes(row.state))
         throw new HttpError(
           409,
           "TERMINAL_STATE",
@@ -247,6 +268,17 @@ export class Store {
       );
       return toRun(result.rows[0]);
     });
+  }
+
+  async respond(
+    workspace: string,
+    id: string,
+    version: number,
+    action: string,
+    text: string,
+    key: string,
+  ) {
+    return respond(this.db, workspace, id, version, action, text, key);
   }
 
   async events(workspace: string, id: string, cursor: number) {

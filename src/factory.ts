@@ -12,6 +12,7 @@ export type ExecutionPlan = {
   limits: { maxSteps: number; maxAttempts: number };
   policyVersion: string;
   scope: string;
+  human?: { clarification: string; feedback: string; revision: number };
 };
 export type Run = {
   id: string;
@@ -25,7 +26,10 @@ export type Run = {
     | "awaiting_approval"
     | "queued"
     | "cancelling"
-    | "failed";
+    | "failed"
+    | "awaiting_input"
+    | "awaiting_decision"
+    | "completed";
   version?: number;
   state?: string;
   planHash?: string;
@@ -33,6 +37,12 @@ export type Run = {
   policyVersion?: string;
   attemptCount?: number;
   failureReason?: string;
+  humanWorkflow?: boolean;
+  clarification?: string;
+  feedback?: string;
+  decision?: string;
+  revision?: number;
+  humanHistory?: { action: string; text: string; at: string }[];
 };
 export const storageKey = "arkwork.demo.runs.v1";
 

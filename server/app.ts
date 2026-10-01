@@ -335,6 +335,46 @@ export function buildApp(
       ),
   );
 
+  app.post<{
+    Params: { id: string };
+    Body: {
+      expected_version: number;
+      action: string;
+      text: string;
+      request_key: string;
+    };
+  }>(
+    "/v1/work-items/:id/responses",
+    {
+      schema: {
+        params,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            expected_version: { type: "integer", minimum: 1 },
+            action: {
+              type: "string",
+              enum: ["answer", "revise", "continue", "accept"],
+            },
+            text: { type: "string", maxLength: 2000 },
+            request_key: { type: "string", pattern: "^[a-zA-Z0-9-]{8,100}$" },
+          },
+          required: ["expected_version", "action", "text", "request_key"],
+        },
+      },
+    },
+    (request) =>
+      store.respond(
+        workspace(request),
+        request.params.id,
+        request.body.expected_version,
+        request.body.action,
+        request.body.text,
+        request.body.request_key,
+      ),
+  );
+
   app.get<{ Params: { id: string }; Querystring: { cursor?: number } }>(
     "/v1/work-items/:id/events",
     {

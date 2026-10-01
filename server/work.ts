@@ -14,11 +14,22 @@ export type Row = Record<string, unknown> & {
   policy_version: string | null;
   attempt_count: number;
   failure_reason: string | null;
+  human_workflow: boolean;
+  clarification: string;
+  feedback: string;
+  decision: string;
+  revision: number;
+  human_history: { action: string; text: string; at: string }[];
 };
 
 export function toRun(row: Row): Run {
-  const status: Run["status"] =
-    row.state === "awaiting_run_approval"
+  const status: Run["status"] = [
+    "awaiting_input",
+    "awaiting_decision",
+    "completed",
+  ].includes(row.state)
+    ? (row.state as Run["status"])
+    : row.state === "awaiting_run_approval"
       ? "awaiting_approval"
       : row.state === "queued"
         ? "queued"
@@ -44,6 +55,12 @@ export function toRun(row: Row): Run {
     policyVersion: row.policy_version ?? undefined,
     attemptCount: row.attempt_count,
     failureReason: row.failure_reason ?? undefined,
+    humanWorkflow: row.human_workflow,
+    clarification: row.clarification,
+    feedback: row.feedback,
+    decision: row.decision,
+    revision: row.revision,
+    humanHistory: row.human_history,
   };
 }
 

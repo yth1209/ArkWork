@@ -38,6 +38,7 @@ describe("approval and durable fixture queue", () => {
       project,
       "승인한 계획에 대해서만 모의 작업을 실행해 주세요.",
       randomUUID(),
+      false, // Legacy queue regression; interactive checkpoints have separate tests.
     );
   const approve = (run: Awaited<ReturnType<Store["get"]>>) =>
     store.approve(

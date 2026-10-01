@@ -123,6 +123,12 @@ export function useFactory(mode: Mode, selectedId: string | null) {
       const next = await repository.cancel(run);
       upsert(next);
     },
+    respond: async (run: Run, action: string, text: string, key: string) => {
+      if (!repository.respond)
+        throw new Error("단계별 응답은 서버 모의 실행에서 지원합니다.");
+      const next = await repository.respond(run, action, text, key);
+      upsert(next);
+    },
     approve: async (run: Run) => {
       if (!repository.approve)
         throw new Error("로컬 데모는 실행 승인을 지원하지 않습니다.");

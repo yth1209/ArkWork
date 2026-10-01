@@ -14,6 +14,7 @@ export interface WorkRepository {
   create(prompt: string, key: string): Promise<Run>;
   cancel(run: Run): Promise<Run>;
   approve?(run: Run): Promise<Run>;
+  respond?(run: Run, action: string, text: string, key: string): Promise<Run>;
   subscribe(refresh: () => void, issue: (message: string) => void): () => void;
   watch?(
     id: string,
@@ -179,6 +180,20 @@ export class ApiRepository implements WorkRepository {
       },
     );
     return result.run;
+  }
+  async respond(run: Run, action: string, text: string, key: string) {
+    await this.connect();
+    return (
+      await this.request<{ run: Run }>(`/v1/work-items/${run.id}/responses`, {
+        method: "POST",
+        body: JSON.stringify({
+          expected_version: run.version,
+          action,
+          text,
+          request_key: key,
+        }),
+      })
+    ).run;
   }
   subscribe(refresh: () => void, _issue: (message: string) => void) {
     const timer = window.setInterval(refresh, 2500);

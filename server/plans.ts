@@ -14,14 +14,18 @@ function canonical(value: unknown): string {
 }
 export const hashPlan = (plan: unknown) =>
   createHash("sha256").update(canonical(plan)).digest("hex");
-export function executionPlan(requirements: string) {
+export function executionPlan(
+  requirements: string,
+  human?: { clarification: string; feedback: string; revision: number },
+) {
   const plan = {
     executionMode: "fixture" as const,
     requirements,
+    ...(human ? { human } : {}),
     steps: [
       "요구사항 분석",
       "구현 계획",
-      "구현 모의",
+      human ? "구현 전 사용자 결정 요청" : "구현 모의",
       "검증 모의",
       "결과 검토",
     ],
@@ -54,4 +58,17 @@ export async function prepareLegacyPlans(db: Database) {
       );
     }
   });
+}
+
+export function rowPlan(row: Row) {
+  return executionPlan(
+    row.requirements,
+    row.human_workflow
+      ? {
+          clarification: row.clarification,
+          feedback: row.feedback,
+          revision: row.revision,
+        }
+      : undefined,
+  );
 }

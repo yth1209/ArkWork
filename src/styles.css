@@ -929,3 +929,84 @@ footer > span {
     margin-left: auto;
   }
 }
+
+.human-checkpoint {
+  margin: 24px 0;
+  border-color: #8b73e5;
+}
+.human-checkpoint p,
+.human-history p,
+.plan-inputs p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.human-checkpoint li {
+  margin: 12px 0;
+  line-height: 1.6;
+}
+.human-input {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+}
+.human-input textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  background: #0c101a;
+  border: 1px solid #394157;
+  border-radius: 12px;
+  color: #f0efff;
+  font: inherit;
+  resize: vertical;
+  line-height: 1.6;
+}
+.human-input textarea:focus {
+  outline: 2px solid #aa92ff;
+  outline-offset: 2px;
+}
+.human-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 16px;
+}
+.human-history {
+  margin: 24px 0;
+}
+.human-history ol {
+  list-style: none;
+  padding: 0;
+}
+.human-history li {
+  border-top: 1px solid #303647;
+  padding: 16px 0;
+}
+.human-history li small {
+  display: block;
+  margin-top: 6px;
+}
+.plan-inputs {
+  padding: 16px;
+  border: 1px solid #394157;
+  border-radius: 12px;
+  margin: 20px 0;
+}
+.status.awaiting_input,
+.status.awaiting_decision {
+  color: #f7d38b;
+  background: #f7d38b15;
+}
+.status.completed {
+  color: #9fddc2;
+  background: #9fddc215;
+}
+@media (max-width: 600px) {
+  .human-checkpoint .primary,
+  .human-form-footer .secondary {
+    width: 100%;
+    white-space: normal;
+  }
+}

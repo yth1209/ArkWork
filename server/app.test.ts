@@ -9,6 +9,10 @@ describe("local control API with PostgreSQL engine", () => {
   let owner: string;
   let guest: string;
   let project: string;
+  const prepared = new Map<
+    string,
+    { id: string; version: number; planHash: string; policyVersion: string }
+  >();
   const protectedHeaders = (cookie = owner) => ({
     cookie,
     "x-arkwork-request": "browser",
@@ -21,6 +25,7 @@ describe("local control API with PostgreSQL engine", () => {
     await service.app.ready();
   }, 20000);
   beforeEach(async () => {
+    prepared.clear();
     await db.query(
       "TRUNCATE work_events,work_items,projects,sessions,workspaces CASCADE",
     );
@@ -66,16 +71,35 @@ describe("local control API with PostgreSQL engine", () => {
     },
     cookie = owner,
   ) =>
-    service.app.inject({
-      method: "POST",
-      url: `/v1/work-items/${run.id}/approvals`,
-      headers: protectedHeaders(cookie),
-      payload: {
-        expected_version: run.version,
-        plan_hash: run.planHash,
-        policy_version: run.policyVersion,
-      },
-    });
+    (async () => {
+      let current = prepared.get(run.id) ?? run;
+      if (cookie === owner && !prepared.has(run.id)) {
+        const reply = await service.app.inject({
+          method: "POST",
+          url: `/v1/work-items/${run.id}/responses`,
+          headers: protectedHeaders(),
+          payload: {
+            expected_version: run.version,
+            action: "answer",
+            text: "팀 구성원이 작업을 등록하고 조회하면 완료입니다. 알림과 외부 연동은 제외합니다.",
+            request_key: `clarify-${run.id}`,
+          },
+        });
+        expect(reply.statusCode).toBe(200);
+        current = reply.json().run;
+        prepared.set(run.id, current);
+      }
+      return service.app.inject({
+        method: "POST",
+        url: `/v1/work-items/${run.id}/approvals`,
+        headers: protectedHeaders(cookie),
+        payload: {
+          expected_version: current.version,
+          plan_hash: current.planHash,
+          policy_version: current.policyVersion,
+        },
+      });
+    })();
 
   it("requires opt-in, sessions, request protection and same-origin", async () => {
     expect(() => buildApp(db, { devAuth: false })).toThrow();
@@ -137,6 +161,40 @@ describe("local control API with PostgreSQL engine", () => {
     expect((await db.query("SELECT * FROM execution_jobs")).rows).toHaveLength(
       1,
     );
+  });
+  it("protects human response submissions, validates actions and persists the actor's answer", async () => {
+    const run = (await create()).json().run;
+    expect(run.state).toBe("awaiting_input");
+    const payload = {
+      expected_version: run.version,
+      action: "answer",
+      text: "팀원이 업무를 저장하고 조회하면 완료입니다. 외부 연동은 제외합니다.",
+      request_key: "http-answer-key",
+    };
+    const send = (cookie: string, body = payload) =>
+      service.app.inject({
+        method: "POST",
+        url: `/v1/work-items/${run.id}/responses`,
+        headers: protectedHeaders(cookie),
+        payload: body,
+      });
+    expect((await send(guest)).statusCode).toBe(404);
+    expect(
+      (await send(owner, { ...payload, action: "unknown" })).statusCode,
+    ).toBe(422);
+    expect((await send(owner, { ...payload, text: " " })).statusCode).toBe(422);
+    const first = await send(owner),
+      replay = await send(owner);
+    expect(first.statusCode).toBe(200);
+    expect(first.json().run.plan.human.clarification).toBe(payload.text);
+    expect(replay.json().replayed).toBe(true);
+    expect(
+      (await db.query("SELECT actor FROM human_responses")).rows[0].actor,
+    ).toBe("owner");
+    expect(
+      (await send(owner, { ...payload, request_key: "stale-http-answer" }))
+        .statusCode,
+    ).toBe(409);
   });
   it("validates input and project ownership", async () => {
     expect((await create("test-invalid", " ".repeat(10))).statusCode).toBe(422);
@@ -219,7 +277,7 @@ describe("local control API with PostgreSQL engine", () => {
       method: "POST",
       url: `/v1/work-items/${run.id}/cancel`,
       headers: protectedHeaders(),
-      payload: { expected_version: 4 },
+      payload: { expected_version: 5 },
     });
     expect(cancelled.json().status).toBe("cancelling");
     await service.store.tick();
@@ -230,7 +288,7 @@ describe("local control API with PostgreSQL engine", () => {
     expect(result.json()).toMatchObject({
       status: "cancelled",
       stage: 1,
-      version: 6,
+      version: 7,
     });
   });
   it("limits approved work and preserves ordered events across worker creation", async () => {
@@ -250,15 +308,30 @@ describe("local control API with PostgreSQL engine", () => {
     ).json().workspaceId;
     const restarted = new Store(db, 0);
     for (let i = 0; i < 12; i++) await restarted.tick();
+    for (const paused of (await restarted.list(identity)).filter(
+      (run) => run.state === "awaiting_decision",
+    )) {
+      await restarted.respond(
+        identity,
+        paused.id,
+        paused.version!,
+        "continue",
+        "",
+        `continue-${paused.id}`,
+      );
+    }
+    for (let i = 0; i < 12; i++) await restarted.tick();
     const runs = (await restarted.list(identity)).filter(
       (run) => run.id !== fourth.json().run.id,
     );
     expect(runs).toHaveLength(3);
     expect(
-      runs.every((run) => run.state === "review_ready" && run.version === 7),
+      runs.every((run) => run.state === "review_ready" && run.version === 10),
     ).toBe(true);
     const events = await restarted.events(identity, runs[0].id, 2);
-    expect(events.map((item) => item.sequence)).toEqual([3, 4, 5, 6, 7]);
+    expect(events.map((item) => item.sequence)).toEqual([
+      3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
     expect((await approve(fourth.json().run)).statusCode).toBe(200);
   });
   it("does not leak SQL details and invalidates logout sessions", async () => {

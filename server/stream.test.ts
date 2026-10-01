@@ -26,6 +26,7 @@ it("serves resumed SSE events and closes an open stream on logout", async () => 
       String(project.id),
       "서버 이벤트를 다시 연결하고 로그아웃하면 연결을 닫아 주세요.",
       "stream-test-key",
+      false,
     );
     await store.approve(
       session.workspaceId,

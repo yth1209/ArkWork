@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { HumanCheckpoint, HumanHistory } from "./HumanCheckpoint";
 import { useFactory } from "./useFactory";
 import type { Mode } from "./repositories";
 import { stages, type Run } from "./factory";
@@ -31,14 +32,17 @@ const demoStatusText = {
   queued: "실행 큐 대기",
   cancelling: "중단 확인 중",
   failed: "실행 중단 · 확인 필요",
+  awaiting_input: "답변 대기",
+  awaiting_decision: "사용자 결정 대기",
+  completed: "사용자 검토 완료",
 };
 
 export default function App() {
   const [mode, setMode] = useState<Mode>(() => {
     try {
-      return sessionStorage.getItem("arkwork.mode") === "api" ? "api" : "demo";
+      return sessionStorage.getItem("arkwork.mode") === "demo" ? "demo" : "api";
     } catch {
-      return "demo";
+      return "api";
     }
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -69,6 +73,9 @@ export default function App() {
     cancelling: "실행 중단을 확인하고 있습니다",
     cancelled: "작업이 취소되었습니다",
     failed: "작업을 진행하지 못했습니다",
+    awaiting_input: "요구사항에 대한 답변을 기다리고 있습니다",
+    awaiting_decision: "결정이 필요해 진행을 멈췄습니다",
+    completed: "검토를 마치고 작업을 완료했습니다",
   };
 
   function changeMode(next: Mode) {
@@ -128,6 +135,26 @@ export default function App() {
     }
   }
 
+  const responseRequest = useRef<{ signature: string; key: string } | null>(
+    null,
+  );
+  async function respond(run: Run, action: string, text: string) {
+    if (actionPending) return;
+    setActionPending(true);
+    const signature = JSON.stringify([run.id, run.version, action, text]);
+    if (responseRequest.current?.signature !== signature)
+      responseRequest.current = { signature, key: crypto.randomUUID() };
+    try {
+      await factory.respond(run, action, text, responseRequest.current.key);
+      responseRequest.current = null;
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "응답을 저장하지 못했습니다.");
+    } finally {
+      setActionPending(false);
+    }
+  }
+
   function newWork() {
     setSelectedId(null);
     setView("create");
@@ -136,8 +163,13 @@ export default function App() {
 
   function download(run: Run) {
     const content = `# ArkWork ${label} 작업\n\n> 실제 코드 생성, 테스트 또는 PR 생성은 실행되지 않았습니다.\n\n## 요구사항\n${run.prompt}\n\n## 상태\n${statusText[run.status]}\n\n## 다음 단계\n- 요구사항의 수용 기준 정의\n- 저장소와 실행 환경 연결\n- AI 실행 및 실제 검증 연결\n- 변경 내용을 PR로 검토\n`;
+    const humanContent = run.humanWorkflow
+      ? `\n## 사용자 입력\n${run.clarification}\n\n## 수정 의견 · ${run.revision ?? 0}회차\n${run.feedback || "없음"}\n\n## 구현 전 결정\n${run.decision || "결정 대기"}\n\n## 답변과 결정 기록\n${(run.humanHistory ?? []).map((item) => `- ${item.at} · ${item.action}: ${item.text}`).join("\n")}\n`
+      : "";
     const url = URL.createObjectURL(
-      new Blob([content], { type: "text/markdown;charset=utf-8" }),
+      new Blob([content + humanContent], {
+        type: "text/markdown;charset=utf-8",
+      }),
     );
     const link = document.createElement("a");
     link.href = url;
@@ -436,11 +468,40 @@ export default function App() {
                 {label} 시뮬레이션입니다. 실제 AI 호출, 코드 생성, 테스트 및 PR
                 생성은 수행하지 않습니다.
               </p>
+              <HumanCheckpoint
+                key={`${selected.id}-${selected.version}`}
+                run={selected}
+                pending={actionPending}
+                respond={(action, text) => respond(selected, action, text)}
+              />
               {selected.status === "awaiting_approval" && selected.plan && (
                 <div className="panel approval-panel">
                   <span className="eyebrow">EXECUTION APPROVAL</span>
                   <h2>실행 계획</h2>
                   <p>{selected.plan.scope}</p>
+                  {selected.plan.human && (
+                    <div className="plan-inputs">
+                      <h3>이번 계획에 반영된 사용자 입력</h3>
+                      <p>
+                        <strong>요구사항 확인 답변</strong>
+                        <br />
+                        {selected.plan.human.clarification || "답변 대기"}
+                      </p>
+                      {selected.plan.human.feedback && (
+                        <p>
+                          <strong>
+                            수정 의견 · {selected.plan.human.revision}회차
+                          </strong>
+                          <br />
+                          {selected.plan.human.feedback}
+                        </p>
+                      )}
+                      <p className="muted">
+                        답변과 수정 의견을 계획에 고정해 저장합니다. 실제 명세
+                        생성·코드 수정은 아직 수행하지 않습니다.
+                      </p>
+                    </div>
+                  )}
                   <ol>
                     {selected.plan.steps.map((step) => (
                       <li key={step}>{step}</li>
@@ -541,16 +602,44 @@ export default function App() {
                     ? "모의 진행이 완료되었습니다. 아래에서 작업 요약을 확인하세요."
                     : selected.status === "awaiting_approval"
                       ? "승인 전에는 실행 큐나 모의 진행이 시작되지 않습니다."
-                      : selected.status === "queued"
-                        ? "서버 실행 큐에서 차례를 기다리고 있습니다."
-                        : selected.status === "cancelling"
-                          ? "서버가 실행 중단을 확인한 뒤 취소 완료로 표시합니다."
-                          : "이 작업은 더 이상 진행되지 않습니다."}
+                      : selected.status === "awaiting_input" ||
+                          selected.status === "awaiting_decision"
+                        ? "당신의 응답을 기다리고 있습니다. 자동으로 다음 단계로 넘어가지 않습니다."
+                        : selected.status === "completed"
+                          ? "사용자가 결과를 확인하고 완료한 작업입니다."
+                          : selected.status === "queued"
+                            ? "서버 실행 큐에서 차례를 기다리고 있습니다."
+                            : selected.status === "cancelling"
+                              ? "서버가 실행 중단을 확인한 뒤 취소 완료로 표시합니다."
+                              : "이 작업은 더 이상 진행되지 않습니다."}
               </div>
-              {selected.status === "review" && (
+              {["review", "completed"].includes(selected.status) && (
                 <div className="panel result">
                   <span className="eyebrow">REVIEW HANDOFF</span>
                   <h2>실제 구현 전에 확인할 항목</h2>
+                  {selected.humanWorkflow && (
+                    <div className="plan-inputs">
+                      <p>
+                        <strong>사용자 답변</strong>
+                        <br />
+                        {selected.clarification}
+                      </p>
+                      {selected.feedback && (
+                        <p>
+                          <strong>
+                            반영할 수정 의견 · {selected.revision}회차
+                          </strong>
+                          <br />
+                          {selected.feedback}
+                        </p>
+                      )}
+                      <p>
+                        <strong>구현 전 결정</strong>
+                        <br />
+                        {selected.decision}
+                      </p>
+                    </div>
+                  )}
                   <p>
                     입력한 요구사항은 저장되었습니다. 다음 항목은 실제 Software
                     Factory 연결을 위한 검토 목록입니다.
@@ -577,10 +666,15 @@ export default function App() {
                   {error}
                 </p>
               )}
+              <HumanHistory run={selected} />
               <div className="detail-actions">
-                {["running", "queued", "awaiting_approval"].includes(
-                  selected.status,
-                ) && (
+                {[
+                  "running",
+                  "queued",
+                  "awaiting_approval",
+                  "awaiting_input",
+                  "awaiting_decision",
+                ].includes(selected.status) && (
                   <button
                     className="secondary"
                     disabled={actionPending}

@@ -42,13 +42,23 @@ it("persists sessions, work and events across closing and reopening the database
     const session = (
       await service.app.inject({ url: "/v1/session", headers: { cookie } })
     ).json();
-    const run = work.json().run;
+    const first = work.json().run;
+    const run = (
+      await service.store.respond(
+        session.workspaceId,
+        first.id,
+        first.version,
+        "answer",
+        "팀이 작업을 저장하고 재조회하면 완료입니다. 실제 AI 연결은 제외합니다.",
+        "persistent-answer",
+      )
+    ).run;
     await service.store.approve(
       session.workspaceId,
       run.id,
-      run.version,
-      run.planHash,
-      run.policyVersion,
+      run.version!,
+      run.planHash!,
+      run.policyVersion!,
     );
     await service.store.tick();
     await service.app.close();
@@ -65,19 +75,47 @@ it("persists sessions, work and events across closing and reopening the database
     expect(list.json().runs).toHaveLength(1);
     expect(list.json().runs[0]).toMatchObject({
       id: work.json().run.id,
-      version: 4,
+      version: 5,
       stage: 1,
     });
     await db.query(
       "UPDATE execution_jobs SET lease_until=now()-interval '1 second'",
     );
-    for (let i = 0; i < 3; i++) await service.store.tick();
+    await service.store.tick();
+    const paused = await service.store.get(session.workspaceId, run.id);
+    expect(paused.state).toBe("awaiting_decision");
+    await service.app.close();
+    service = undefined;
+    await db.close();
+    db = undefined;
+    db = await openDatabase(join(directory, "db"));
+    await migrate(db);
+    service = buildApp(db, { devAuth: true, intervalMs: 0 });
+    await service.store.tick();
+    const restoredPause = await service.store.get(session.workspaceId, run.id);
+    expect(restoredPause).toMatchObject({
+      state: "awaiting_decision",
+      version: paused.version,
+    });
+    expect(restoredPause.humanHistory?.map((item) => item.action)).toEqual([
+      "answer",
+      "approve_plan",
+    ]);
+    await service.store.respond(
+      session.workspaceId,
+      run.id,
+      paused.version!,
+      "continue",
+      "",
+      "persistent-continue",
+    );
+    for (let i = 0; i < 2; i++) await service.store.tick();
     const result = await service.app.inject({
       url: `/v1/work-items/${work.json().run.id}`,
       headers: { cookie },
     });
     expect(result.json().status).toBe("review");
-    expect((await db.query("SELECT * FROM work_events")).rows).toHaveLength(9);
+    expect((await db.query("SELECT * FROM work_events")).rows).toHaveLength(12);
     await db.query("UPDATE schema_migrations SET checksum='changed'");
     await expect(migrate(db)).rejects.toThrow("migration");
   } finally {

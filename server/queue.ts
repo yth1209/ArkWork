@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Database, Queryable } from "./database";
 import { event, type Row } from "./work";
-import { executionPlan, hashPlan, policyVersion } from "./plans";
+import { rowPlan, hashPlan, policyVersion } from "./plans";
 
 export type Lease = {
   workId: string;
@@ -42,11 +42,11 @@ export class FixtureQueue {
     ).rows[0];
     return Boolean(
       approval &&
-      approval.plan_hash === row.plan_hash &&
-      approval.policy_version === policyVersion &&
-      row.policy_version === policyVersion &&
-      executionPlan(row.requirements).hash === row.plan_hash &&
-      hashPlan(row.execution_plan) === row.plan_hash,
+        approval.plan_hash === row.plan_hash &&
+        approval.policy_version === policyVersion &&
+        row.policy_version === policyVersion &&
+        rowPlan(row).hash === row.plan_hash &&
+        hashPlan(row.execution_plan) === row.plan_hash,
     );
   }
 
@@ -120,16 +120,16 @@ export class FixtureQueue {
         const job = (
           await tx.query(
             `UPDATE execution_jobs SET status='running',lease_owner=$2,
-          lease_until=now()+$3*interval '1 millisecond',generation=generation+1,attempts=attempts+1
+          lease_until=now()+$3*interval '1 millisecond',generation=generation+1,attempts=attempts+CASE WHEN resume_pending THEN 0 ELSE 1 END,resume_pending=false
           WHERE work_id=$1 AND status='pending' RETURNING *`,
             [row.id, this.owner, this.leaseMs],
           )
         ).rows[0];
         if (!job) continue;
         const updated = await tx.query<Row>(
-          `UPDATE work_items SET state='running',version=version+1,attempt_count=attempt_count+1,
+          `UPDATE work_items SET state='running',version=version+1,attempt_count=$3,
           next_step_at=now()+$2*interval '1 millisecond' WHERE id=$1 RETURNING *`,
-          [row.id, this.intervalMs],
+          [row.id, this.intervalMs, Number(job.attempts)],
         );
         await event(tx, updated.rows[0], workspace, "started");
         leases.push({
@@ -196,6 +196,18 @@ export class FixtureQueue {
       );
       if (!due.rows.length) return true;
       const stage = Math.min(work.stage + 1, 4);
+      if (work.human_workflow && stage === 2 && !work.decision) {
+        const paused = await tx.query<Row>(
+          "UPDATE work_items SET stage=2,state='awaiting_decision',version=version+1 WHERE id=$1 RETURNING *",
+          [work.id],
+        );
+        await tx.query(
+          "UPDATE execution_jobs SET status='waiting',lease_owner=NULL,lease_until=NULL,generation=generation+1 WHERE work_id=$1",
+          [work.id],
+        );
+        await event(tx, paused.rows[0], lease.workspace, "decision_required");
+        return true;
+      }
       const state =
         stage === 4 ? "review_ready" : stage === 3 ? "verifying" : "running";
       const updated = await tx.query<Row>(
