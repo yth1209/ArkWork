@@ -66,19 +66,16 @@ export function buildApp(
         request.id,
         error instanceof Error ? error.name : "unknown",
       );
-    reply
-      .status(status)
-      .send({
-        code:
-          failure?.code ?? (validation ? "INVALID_INPUT" : "INTERNAL_ERROR"),
-        message:
-          failure?.message ??
-          (validation
-            ? "입력 형식과 길이를 확인해 주세요."
-            : "요청을 처리하지 못했습니다."),
-        retryable: status >= 500 || status === 429,
-        request_id: request.id,
-      });
+    reply.status(status).send({
+      code: failure?.code ?? (validation ? "INVALID_INPUT" : "INTERNAL_ERROR"),
+      message:
+        failure?.message ??
+        (validation
+          ? "입력 형식과 길이를 확인해 주세요."
+          : "요청을 처리하지 못했습니다."),
+      retryable: status >= 500 || status === 429,
+      request_id: request.id,
+    });
   });
 
   app.addHook("onRequest", async (request) => {
@@ -301,6 +298,40 @@ export function buildApp(
         workspace(request),
         request.params.id,
         request.body.expected_version,
+      ),
+  );
+
+  app.post<{
+    Params: { id: string };
+    Body: {
+      expected_version: number;
+      plan_hash: string;
+      policy_version: string;
+    };
+  }>(
+    "/v1/work-items/:id/approvals",
+    {
+      schema: {
+        params,
+        body: {
+          type: "object",
+          properties: {
+            expected_version: { type: "integer", minimum: 1 },
+            plan_hash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+            policy_version: { type: "string", minLength: 1, maxLength: 64 },
+          },
+          required: ["expected_version", "plan_hash", "policy_version"],
+          additionalProperties: false,
+        },
+      },
+    },
+    (request) =>
+      store.approve(
+        workspace(request),
+        request.params.id,
+        request.body.expected_version,
+        request.body.plan_hash,
+        request.body.policy_version,
       ),
   );
 

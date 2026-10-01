@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFactory } from "./useFactory";
 import type { Mode } from "./repositories";
 import { stages, type Run } from "./factory";
@@ -27,6 +27,10 @@ const demoStatusText = {
   running: "데모 진행 중",
   review: "검토 대기",
   cancelled: "취소됨",
+  awaiting_approval: "실행 승인 대기",
+  queued: "실행 큐 대기",
+  cancelling: "중단 확인 중",
+  failed: "실행 중단 · 확인 필요",
 };
 
 export default function App() {
@@ -42,12 +46,30 @@ export default function App() {
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
+  const [approvalAccepted, setApprovalAccepted] = useState(false);
   const pending = useRef<{ prompt: string; key: string } | null>(null);
   const factory = useFactory(mode, selectedId);
   const { runs, issue, loading, maxLength } = factory;
   const selected = runs.find((run) => run.id === selectedId);
   const label = mode === "api" ? "서버 모의" : "데모";
-  const statusText = { ...demoStatusText, running: mode === "api" ? "서버 모의 진행 중" : demoStatusText.running };
+  const statusText = {
+    ...demoStatusText,
+    running: mode === "api" ? "서버 모의 진행 중" : demoStatusText.running,
+  };
+
+  useEffect(() => {
+    setApprovalAccepted(false);
+  }, [selectedId, selected?.planHash]);
+  const titles: Record<Run["status"], string> = {
+    awaiting_approval: "계획을 확인하고 실행을 승인해 주세요",
+    queued: "승인한 작업이 실행을 기다리고 있습니다",
+    running: "아이디어를 구체화하고 있습니다",
+    review: "결과를 검토할 차례입니다",
+    cancelling: "실행 중단을 확인하고 있습니다",
+    cancelled: "작업이 취소되었습니다",
+    failed: "작업을 진행하지 못했습니다",
+  };
 
   function changeMode(next: Mode) {
     setMode(next);
@@ -81,11 +103,28 @@ export default function App() {
   }
 
   async function cancel(run: Run) {
+    if (actionPending) return;
+    setActionPending(true);
     try {
       await factory.cancel(run);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "작업을 취소하지 못했습니다.");
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  async function approve(run: Run) {
+    if (!approvalAccepted || actionPending) return;
+    setActionPending(true);
+    try {
+      await factory.approve(run);
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "실행을 승인하지 못했습니다.");
+    } finally {
+      setActionPending(false);
     }
   }
 
@@ -193,14 +232,14 @@ export default function App() {
             <button
               aria-pressed={mode === "demo"}
               onClick={() => changeMode("demo")}
-              disabled={submitting}
+              disabled={submitting || actionPending}
             >
               로컬 데모
             </button>
             <button
               aria-pressed={mode === "api"}
               onClick={() => changeMode("api")}
-              disabled={submitting}
+              disabled={submitting || actionPending}
             >
               서버 모의 실행
             </button>
@@ -275,7 +314,11 @@ export default function App() {
                       type="submit"
                       disabled={submitting || loading}
                     >
-                      {submitting ? "저장 중…" : `${label} 작업 시작`}{" "}
+                      {submitting
+                        ? "저장 중…"
+                        : mode === "api"
+                          ? "요구사항 저장"
+                          : `${label} 작업 시작`}{" "}
                       <span>↗</span>
                     </button>
                   </div>
@@ -383,13 +426,7 @@ export default function App() {
                   <span className="eyebrow">
                     WORK / {selected.id.slice(0, 8)}
                   </span>
-                  <h1>
-                    {selected.status === "review"
-                      ? "결과를 검토할 차례입니다"
-                      : selected.status === "cancelled"
-                        ? "작업이 취소되었습니다"
-                        : "아이디어를 구체화하고 있습니다"}
-                  </h1>
+                  <h1>{titles[selected.status]}</h1>
                 </div>
                 <span className={`status ${selected.status}`}>
                   {statusText[selected.status]}
@@ -399,6 +436,60 @@ export default function App() {
                 {label} 시뮬레이션입니다. 실제 AI 호출, 코드 생성, 테스트 및 PR
                 생성은 수행하지 않습니다.
               </p>
+              {selected.status === "awaiting_approval" && selected.plan && (
+                <div className="panel approval-panel">
+                  <span className="eyebrow">EXECUTION APPROVAL</span>
+                  <h2>실행 계획</h2>
+                  <p>{selected.plan.scope}</p>
+                  <ol>
+                    {selected.plan.steps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                  <dl>
+                    <div>
+                      <dt>단계 진행 상한</dt>
+                      <dd>{selected.plan.limits.maxSteps}회</dd>
+                    </div>
+                    <div>
+                      <dt>자동 실행 시도 상한</dt>
+                      <dd>{selected.plan.limits.maxAttempts}회</dd>
+                    </div>
+                    <div>
+                      <dt>유료 AI 호출</dt>
+                      <dd>없음 · 모의 실행 전용</dd>
+                    </div>
+                  </dl>
+                  <p className="plan-reference">
+                    계획: {selected.planHash}
+                    <br />
+                    정책: {selected.policyVersion}
+                  </p>
+                  <label className="approval-confirm">
+                    <input
+                      type="checkbox"
+                      checked={approvalAccepted}
+                      onChange={(e) => setApprovalAccepted(e.target.checked)}
+                      disabled={actionPending}
+                    />
+                    위 범위와 제한을 확인했으며 서버 모의 실행을 승인합니다.
+                  </label>
+                  <button
+                    className="primary"
+                    disabled={!approvalAccepted || actionPending}
+                    onClick={() => {
+                      void approve(selected);
+                    }}
+                  >
+                    {actionPending ? "승인 저장 중…" : "계획 승인 후 모의 실행"}
+                  </button>
+                </div>
+              )}
+              {selected.failureReason && (
+                <p className="notice" role="alert">
+                  {selected.failureReason}
+                </p>
+              )}
               <div className="detail-grid">
                 <div className="panel">
                   <h2>요구사항</h2>
@@ -432,7 +523,9 @@ export default function App() {
                                   ? "모의 결과 검토 대기"
                                   : selected.status === "cancelled"
                                     ? "진행 중단"
-                                    : `${label} 단계 진행 중`
+                                    : selected.status === "running"
+                                      ? `${label} 단계 진행 중`
+                                      : statusText[selected.status]
                                 : "대기 중"}
                           </small>
                         </div>
@@ -446,7 +539,13 @@ export default function App() {
                   ? `현재 단계: ${stages[selected.stage]}. 잠시 후 다음 모의 단계로 이동합니다.`
                   : selected.status === "review"
                     ? "모의 진행이 완료되었습니다. 아래에서 작업 요약을 확인하세요."
-                    : "이 작업은 더 이상 진행되지 않습니다."}
+                    : selected.status === "awaiting_approval"
+                      ? "승인 전에는 실행 큐나 모의 진행이 시작되지 않습니다."
+                      : selected.status === "queued"
+                        ? "서버 실행 큐에서 차례를 기다리고 있습니다."
+                        : selected.status === "cancelling"
+                          ? "서버가 실행 중단을 확인한 뒤 취소 완료로 표시합니다."
+                          : "이 작업은 더 이상 진행되지 않습니다."}
               </div>
               {selected.status === "review" && (
                 <div className="panel result">
@@ -479,9 +578,12 @@ export default function App() {
                 </p>
               )}
               <div className="detail-actions">
-                {selected.status === "running" && (
+                {["running", "queued", "awaiting_approval"].includes(
+                  selected.status,
+                ) && (
                   <button
                     className="secondary"
+                    disabled={actionPending}
                     onClick={() => {
                       void cancel(selected);
                     }}

@@ -57,6 +57,26 @@ describe("local control API with PostgreSQL engine", () => {
       payload: { requirements },
     });
 
+  const approve = (
+    run: {
+      id: string;
+      version: number;
+      planHash: string;
+      policyVersion: string;
+    },
+    cookie = owner,
+  ) =>
+    service.app.inject({
+      method: "POST",
+      url: `/v1/work-items/${run.id}/approvals`,
+      headers: protectedHeaders(cookie),
+      payload: {
+        expected_version: run.version,
+        plan_hash: run.planHash,
+        policy_version: run.policyVersion,
+      },
+    });
+
   it("requires opt-in, sessions, request protection and same-origin", async () => {
     expect(() => buildApp(db, { devAuth: false })).toThrow();
     expect(
@@ -95,6 +115,28 @@ describe("local control API with PostgreSQL engine", () => {
         })
       ).statusCode,
     ).toBe(401);
+  });
+  it("validates approval payload, rejects other workspaces and replays the same HTTP approval", async () => {
+    const run = (await create()).json().run;
+    expect(
+      (
+        await service.app.inject({
+          method: "POST",
+          url: `/v1/work-items/${run.id}/approvals`,
+          headers: protectedHeaders(),
+          payload: { expected_version: 1 },
+        })
+      ).statusCode,
+    ).toBe(422);
+    expect((await approve(run, guest)).statusCode).toBe(404);
+    const first = await approve(run),
+      again = await approve(run);
+    expect(first.statusCode).toBe(200);
+    expect(first.json().run.state).toBe("queued");
+    expect(again.json().replayed).toBe(true);
+    expect((await db.query("SELECT * FROM execution_jobs")).rows).toHaveLength(
+      1,
+    );
   });
   it("validates input and project ownership", async () => {
     expect((await create("test-invalid", " ".repeat(10))).statusCode).toBe(422);
@@ -164,6 +206,7 @@ describe("local control API with PostgreSQL engine", () => {
   });
   it("rejects stale cancellation and never advances a cancelled item", async () => {
     const run = (await create()).json().run;
+    expect((await approve(run)).statusCode).toBe(200);
     await service.store.tick();
     const stale = await service.app.inject({
       method: "POST",
@@ -176,9 +219,9 @@ describe("local control API with PostgreSQL engine", () => {
       method: "POST",
       url: `/v1/work-items/${run.id}/cancel`,
       headers: protectedHeaders(),
-      payload: { expected_version: 2 },
+      payload: { expected_version: 4 },
     });
-    expect(cancelled.json().status).toBe("cancelled");
+    expect(cancelled.json().status).toBe("cancelling");
     await service.store.tick();
     const result = await service.app.inject({
       url: `/v1/work-items/${run.id}`,
@@ -187,13 +230,18 @@ describe("local control API with PostgreSQL engine", () => {
     expect(result.json()).toMatchObject({
       status: "cancelled",
       stage: 1,
-      version: 3,
+      version: 6,
     });
   });
-  it("limits concurrent work and preserves ordered events across store restart", async () => {
-    for (let i = 0; i < 3; i++)
-      expect((await create(`test-key-${i}`)).statusCode).toBe(201);
-    expect((await create("test-fourth")).statusCode).toBe(429);
+  it("limits approved work and preserves ordered events across worker creation", async () => {
+    for (let i = 0; i < 3; i++) {
+      const created = await create(`test-key-${i}`);
+      expect(created.statusCode).toBe(201);
+      expect((await approve(created.json().run)).statusCode).toBe(200);
+    }
+    const fourth = await create("test-fourth");
+    expect(fourth.statusCode).toBe(201);
+    expect((await approve(fourth.json().run)).statusCode).toBe(429);
     const identity = (
       await service.app.inject({
         url: "/v1/session",
@@ -201,14 +249,17 @@ describe("local control API with PostgreSQL engine", () => {
       })
     ).json().workspaceId;
     const restarted = new Store(db, 0);
-    for (let i = 0; i < 4; i++) await restarted.tick();
-    const runs = await restarted.list(identity);
+    for (let i = 0; i < 12; i++) await restarted.tick();
+    const runs = (await restarted.list(identity)).filter(
+      (run) => run.id !== fourth.json().run.id,
+    );
+    expect(runs).toHaveLength(3);
     expect(
-      runs.every((run) => run.state === "review_ready" && run.version === 5),
+      runs.every((run) => run.state === "review_ready" && run.version === 7),
     ).toBe(true);
     const events = await restarted.events(identity, runs[0].id, 2);
-    expect(events.map((item) => item.sequence)).toEqual([3, 4, 5]);
-    expect((await create("test-fourth")).statusCode).toBe(201);
+    expect(events.map((item) => item.sequence)).toEqual([3, 4, 5, 6, 7]);
+    expect((await approve(fourth.json().run)).statusCode).toBe(200);
   });
   it("does not leak SQL details and invalidates logout sessions", async () => {
     const response = await service.app.inject({

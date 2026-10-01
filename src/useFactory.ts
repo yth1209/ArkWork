@@ -123,5 +123,11 @@ export function useFactory(mode: Mode, selectedId: string | null) {
       const next = await repository.cancel(run);
       upsert(next);
     },
+    approve: async (run: Run) => {
+      if (!repository.approve)
+        throw new Error("로컬 데모는 실행 승인을 지원하지 않습니다.");
+      const next = await repository.approve(run);
+      upsert(next);
+    },
   };
 }

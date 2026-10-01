@@ -5,14 +5,34 @@ export const stages = [
   "검증",
   "결과 검토",
 ] as const;
+export type ExecutionPlan = {
+  executionMode: "fixture";
+  requirements: string;
+  steps: string[];
+  limits: { maxSteps: number; maxAttempts: number };
+  policyVersion: string;
+  scope: string;
+};
 export type Run = {
   id: string;
   prompt: string;
   createdAt: string;
   stage: number;
-  status: "running" | "review" | "cancelled";
+  status:
+    | "running"
+    | "review"
+    | "cancelled"
+    | "awaiting_approval"
+    | "queued"
+    | "cancelling"
+    | "failed";
   version?: number;
   state?: string;
+  planHash?: string;
+  plan?: ExecutionPlan;
+  policyVersion?: string;
+  attemptCount?: number;
+  failureReason?: string;
 };
 export const storageKey = "arkwork.demo.runs.v1";
 
