@@ -39,6 +39,17 @@ it("persists sessions, work and events across closing and reopening the database
       },
     });
     expect(work.statusCode).toBe(201);
+    const session = (
+      await service.app.inject({ url: "/v1/session", headers: { cookie } })
+    ).json();
+    const run = work.json().run;
+    await service.store.approve(
+      session.workspaceId,
+      run.id,
+      run.version,
+      run.planHash,
+      run.policyVersion,
+    );
     await service.store.tick();
     await service.app.close();
     service = undefined;
@@ -54,16 +65,19 @@ it("persists sessions, work and events across closing and reopening the database
     expect(list.json().runs).toHaveLength(1);
     expect(list.json().runs[0]).toMatchObject({
       id: work.json().run.id,
-      version: 2,
+      version: 4,
       stage: 1,
     });
+    await db.query(
+      "UPDATE execution_jobs SET lease_until=now()-interval '1 second'",
+    );
     for (let i = 0; i < 3; i++) await service.store.tick();
     const result = await service.app.inject({
       url: `/v1/work-items/${work.json().run.id}`,
       headers: { cookie },
     });
     expect(result.json().status).toBe("review");
-    expect((await db.query("SELECT * FROM work_events")).rows).toHaveLength(5);
+    expect((await db.query("SELECT * FROM work_events")).rows).toHaveLength(9);
     await db.query("UPDATE schema_migrations SET checksum='changed'");
     await expect(migrate(db)).rejects.toThrow("migration");
   } finally {

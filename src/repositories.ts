@@ -13,6 +13,7 @@ export interface WorkRepository {
   list(): Promise<Run[]>;
   create(prompt: string, key: string): Promise<Run>;
   cancel(run: Run): Promise<Run>;
+  approve?(run: Run): Promise<Run>;
   subscribe(refresh: () => void, issue: (message: string) => void): () => void;
   watch?(
     id: string,
@@ -163,6 +164,21 @@ export class ApiRepository implements WorkRepository {
       method: "POST",
       body: JSON.stringify({ expected_version: run.version }),
     });
+  }
+  async approve(run: Run) {
+    await this.connect();
+    const result = await this.request<{ run: Run }>(
+      `/v1/work-items/${run.id}/approvals`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          expected_version: run.version,
+          plan_hash: run.planHash,
+          policy_version: run.policyVersion,
+        }),
+      },
+    );
+    return result.run;
   }
   subscribe(refresh: () => void, _issue: (message: string) => void) {
     const timer = window.setInterval(refresh, 2500);

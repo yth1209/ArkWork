@@ -9,7 +9,8 @@ ArkWork is a complete Software Factory: users submit requirements and review sof
 - React + TypeScript + Vite, Node.js 24. The standalone demo still requires no backend. Optional local API mode adds Fastify and a PostgreSQL-compatible persistence layer.
 - `WorkRepository` separates `DemoRepository` (browser timer/storage) and `ApiRepository` (HTTP/SSE). API fixture progress runs on the server, not the browser. Both modes visibly disclose that AI is not connected.
 - Recent 20 demo runs persist in localStorage. Server mode persists work, hashed sessions and ordered events in `.runtime/database` with PGlite; its list returns up to 100 items. No automatic demo-to-server data migration occurs.
-- At most three simulations run concurrently per workspace. Server creation locks workspace rows, requires an idempotency key, and emits events in the same transaction. Cancellation checks the expected state version and is terminal for the fixture.
+- Server requirements first enter awaiting_run_approval. A canonical plan hash binds requirements, fixture policy and limits. Approval atomically records the actor, approved version and hash, emits an event and enqueues one job. Repeated approval requests are idempotent.
+- Up to three approved queued/active simulations per workspace, with one active execution. Workspace/work/job lock order, worker owner, lease expiry and generation fence execution. Expired leases recover under a two-attempt limit; stale workers cannot advance. Running cancellation uses cancelling until a worker or expired lease confirms stopped execution. Pending/unapproved cancellation completes immediately.
 - User requirements are rendered as text, not HTML. Downloaded Markdown is a demo handoff, not generated software.
 - Dark responsive layout supports mobile navigation and keyboard focus. No external AI API requests are made. API mode uses an explicit development identity selector through the client adapter; this is not production authentication or hosting.
 - SSE supports Last-Event-ID/cursor replay, session expiry/revocation and graceful shutdown. List polling supplements SSE. Database migrations use a transaction, advisory lock and recorded checksum.
@@ -17,7 +18,9 @@ ArkWork is a complete Software Factory: users submit requirements and review sof
 
 ## Next milestone
 
-M1 foundation now has durable local work, project APIs, protected development sessions and event delivery. Production identity, approval/state coverage beyond fixtures, durable external side-effect queue, real agent execution and public hosting remain outstanding. Add GitHub authentication/integration and select an AI provider in M2. Do not treat fixture completion as verified generated software.
+M1 foundation now has durable local work, project APIs, protected development sessions, fixture approval/queue and event delivery. Production identity, approval/state coverage beyond fixtures, external side-effect publishing, real agent execution and public hosting remain outstanding. Add GitHub authentication/integration and select an AI provider in M2. Do not treat fixture completion as verified generated software.
+
+Migration 002 preserves completed legacy history and requires fresh approval for unfinished pre-approval fixtures. The original 001 checksum is retained. Fixture policies do not authorize later AI calls or repository edits; new scopes need new approved plans and execution contracts.
 
 ## Handoff
 

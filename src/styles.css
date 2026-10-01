@@ -834,6 +834,68 @@ footer > span {
   padding: 3px;
   border-radius: 7px;
 }
+.approval-panel {
+  margin: 24px 0;
+  border-color: #5b4778;
+}
+.approval-panel h2 {
+  margin-top: 12px;
+}
+.approval-panel p,
+.approval-panel li {
+  font-size: 12px;
+  line-height: 1.9;
+  color: #a9b4c7;
+}
+.approval-panel dl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid #303847;
+  border-bottom: 1px solid #303847;
+}
+.approval-panel dt {
+  font-size: 10px;
+  color: #8694aa;
+}
+.approval-panel dd {
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+.plan-reference {
+  overflow-wrap: anywhere;
+  font-family: monospace;
+}
+.approval-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.8;
+  margin: 20px 0;
+}
+.approval-confirm input {
+  margin-top: 4px;
+  accent-color: #a994f3;
+}
+.status.awaiting_approval,
+.status.queued {
+  background: #282536;
+  color: #c4b7e6;
+  border-color: #55486e;
+}
+.status.cancelling,
+.status.failed {
+  background: #362a22;
+  color: #e4bd97;
+  border-color: #66503d;
+}
+@media (max-width: 720px) {
+  .approval-panel dl {
+    grid-template-columns: 1fr;
+  }
+}
 .mode-switch button {
   border: 0;
   background: none;

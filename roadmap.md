@@ -14,7 +14,7 @@
 
 ## 첫 구현 작업 분해
 
-진행 기록: M1의 데이터 계층 분리, 프로젝트·작업 API, migration, 개발 세션 접근 범위, 중복 생성 방지, 버전 기반 취소, 서버 진행 이벤트와 복원 검증을 구현했다. 로컬 DB는 PGlite를 사용하며 외부 PostgreSQL adapter는 아직 검증하지 않았다. 운영 인증·실제 승인 정책·외부 실행 큐는 남아 있으므로 M1 전체 완료 또는 실서비스 준비로 표시하지 않는다.
+진행 기록: M1의 데이터 계층 분리, 프로젝트·작업 API, migration, 개발 세션 접근 범위, 중복 생성 방지, 서버 이벤트와 기록 복원을 구현했다. 이어서 모의 계획 승인, 승인·큐 원자적 저장, workspace별 실행 제한, lease·generation 기반 복구와 취소 확인을 구현했다. 로컬 DB는 PGlite를 사용하며 외부 PostgreSQL adapter는 아직 검증하지 않았다. 운영 인증·유료 실행 예산·외부 실행 및 게시 연동은 남아 있으므로 M1 전체 완료 또는 실서비스 준비로 표시하지 않는다.
 
 1. M1 데이터 계층: frontend repository interface와 demo/API 모드 분리. 기존 데모 동작을 보존한다.
 2. M1 DB·API: migration, 인증 scope, 작업 생성·조회·상태 전이·idempotency 통합 테스트.
