@@ -1010,3 +1010,51 @@ footer > span {
     white-space: normal;
   }
 }
+
+.pr-panel {
+  margin: 24px 0;
+}
+.pr-target {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 16px;
+  margin: 20px 0;
+}
+.pr-target label {
+  display: grid;
+  gap: 8px;
+}
+.pr-target input,
+.pr-target select {
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  color: inherit;
+  background: #141a23;
+  border: 1px solid #394252;
+  border-radius: 8px;
+}
+.pr-sha,
+.pr-files {
+  overflow-wrap: anywhere;
+}
+.pr-files li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pr-panel a {
+  color: #91a7ff;
+}
+.pr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 700px) {
+  .pr-target {
+    grid-template-columns: 1fr;
+  }
+}

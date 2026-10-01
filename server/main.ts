@@ -1,4 +1,5 @@
 import { openDatabase, migrate } from "./database";
+import { GitHubCli } from "./github";
 import { SubscriptionCodex } from "./codex";
 import { buildApp } from "./app";
 
@@ -12,6 +13,15 @@ const { app, store, agent } = buildApp(db, {
   devAuth: process.env.ARKWORK_DEV_AUTH === "1",
   origin: process.env.ARKWORK_UI_ORIGIN,
   agent: new SubscriptionCodex(),
+  github:
+    process.env.ARKWORK_GITHUB_ENABLED === "1"
+      ? new GitHubCli(
+          (process.env.ARKWORK_GITHUB_REPOSITORIES ?? "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        )
+      : undefined,
 });
 let inFlight: Promise<void> | undefined;
 let stopping = false;

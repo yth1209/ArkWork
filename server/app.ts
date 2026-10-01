@@ -1,3 +1,5 @@
+import { PullRequests } from "./pullRequests";
+import type { GitHubProvider } from "./github";
 import Fastify from "fastify";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Database } from "./database";
@@ -27,6 +29,7 @@ export function buildApp(
     intervalMs?: number;
     cookieSecure?: boolean;
     agent?: AgentProvider;
+    github?: GitHubProvider;
   },
 ) {
   if (!options.devAuth)
@@ -38,6 +41,7 @@ export function buildApp(
     bodyLimit: 32_000,
     ajv: { customOptions: { removeAdditional: false } },
   });
+  const prs = new PullRequests(db, options.github);
   const store = new Store(db, options.intervalMs);
   const agent = options.agent ? new AgentService(db, options.agent) : undefined;
   const origin = options.origin ?? "http://localhost:5173";
@@ -256,6 +260,107 @@ export function buildApp(
       if (!agent) return store.get(workspace(request), request.params.id);
       return agent.cancel(workspace(request), request.params.id);
     },
+  );
+
+  app.get("/v1/publisher", async () => prs.status());
+  const prBody = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      expected_version: { type: "integer", minimum: 1 },
+      repository: { type: "string", maxLength: 200 },
+      base: { type: "string", maxLength: 200 },
+      branch: { type: "string", maxLength: 200 },
+    },
+    required: ["expected_version", "repository", "base", "branch"],
+  };
+  app.post<{
+    Params: { id: string };
+    Body: {
+      expected_version: number;
+      repository: string;
+      base: string;
+      branch: string;
+    };
+  }>(
+    "/v1/work-items/:id/pull-request",
+    { schema: { params, body: prBody } },
+    (request) =>
+      prs.publish(
+        workspace(request),
+        request.params.id,
+        request.body.expected_version,
+        {
+          repository: request.body.repository,
+          base: request.body.base,
+          branch: request.body.branch,
+        },
+      ),
+  );
+  app.post<{ Params: { id: string }; Body: { expected_version: number } }>(
+    "/v1/work-items/:id/pull-request/refresh",
+    {
+      schema: {
+        params,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: { expected_version: { type: "integer", minimum: 1 } },
+          required: ["expected_version"],
+        },
+      },
+    },
+    (request) =>
+      prs.refresh(
+        workspace(request),
+        request.params.id,
+        request.body.expected_version,
+      ),
+  );
+  app.post<{
+    Params: { id: string };
+    Body: {
+      expected_version: number;
+      head_sha: string;
+      decision: "approve" | "changes";
+      text: string;
+      request_key: string;
+    };
+  }>(
+    "/v1/work-items/:id/pull-request/reviews",
+    {
+      schema: {
+        params,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            expected_version: { type: "integer", minimum: 1 },
+            head_sha: { type: "string", pattern: "^[a-f0-9]{40}$" },
+            decision: { type: "string", enum: ["approve", "changes"] },
+            text: { type: "string", minLength: 10, maxLength: 2000 },
+            request_key: { type: "string", pattern: "^[a-zA-Z0-9-]{8,100}$" },
+          },
+          required: [
+            "expected_version",
+            "head_sha",
+            "decision",
+            "text",
+            "request_key",
+          ],
+        },
+      },
+    },
+    (request) =>
+      prs.assess(
+        workspace(request),
+        request.params.id,
+        request.body.expected_version,
+        request.body.head_sha,
+        request.body.decision,
+        request.body.text,
+        request.body.request_key,
+      ),
   );
 
   app.get("/v1/session", async (request) => ({
@@ -536,5 +641,5 @@ export function buildApp(
       await send();
     },
   );
-  return { app, store, agent };
+  return { app, store, agent, prs };
 }

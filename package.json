@@ -18,7 +18,8 @@
     "codex:login": "node scripts/codex-session.mjs login",
     "codex:status": "node scripts/codex-session.mjs status",
     "codex:logout": "node scripts/codex-session.mjs logout",
-    "test:codex-smoke": "node scripts/codex-smoke.mjs"
+    "test:codex-smoke": "node scripts/codex-smoke.mjs",
+    "test:pr-smoke": "node scripts/pr-smoke.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.8",

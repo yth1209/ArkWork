@@ -1,3 +1,34 @@
+export type PullRequestReview = {
+  submissionId: string;
+  repository: string;
+  base: string;
+  branch: string;
+  status: "publishing" | "ready";
+  number?: number;
+  url?: string;
+  headSha?: string;
+  open?: boolean;
+  draft?: boolean;
+  checks?: "passed" | "pending" | "failed" | "unreported";
+  files?: { path: string; additions: number; deletions: number }[];
+  filesTruncated?: boolean;
+  updatedAt?: string;
+  assessment?: {
+    decision: "approve" | "changes";
+    headSha: string;
+    text: string;
+    actor: string;
+    at: string;
+  };
+  reviews: {
+    decision: "approve" | "changes";
+    headSha: string;
+    text: string;
+    actor: string;
+    at: string;
+  }[];
+};
+export type PublisherStatus = { enabled: boolean; repositories: string[] };
 export type Specification = {
   summary: string;
   acceptanceCriteria: string[];
@@ -61,6 +92,7 @@ export type Run = {
   attemptCount?: number;
   failureReason?: string;
   humanWorkflow?: boolean;
+  pullRequest?: PullRequestReview;
   clarification?: string;
   feedback?: string;
   decision?: string;

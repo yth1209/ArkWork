@@ -5,6 +5,7 @@ import {
   storageKey,
   type Run,
   type AgentStatus,
+  type PublisherStatus,
 } from "./factory";
 
 export type Mode = "demo" | "api";
@@ -16,6 +17,18 @@ export interface WorkRepository {
   cancel(run: Run): Promise<Run>;
   approve?(run: Run): Promise<Run>;
   agentStatus?(): Promise<AgentStatus>;
+  publisherStatus?(): Promise<PublisherStatus>;
+  publishPr?(
+    run: Run,
+    target: { repository: string; base: string; branch: string },
+  ): Promise<Run>;
+  refreshPr?(run: Run): Promise<Run>;
+  assessPr?(
+    run: Run,
+    decision: string,
+    text: string,
+    key: string,
+  ): Promise<Run>;
   generate?(run: Run, phase: string, key: string): Promise<Run>;
   cancelAgent?(run: Run): Promise<Run>;
   respond?(run: Run, action: string, text: string, key: string): Promise<Run>;
@@ -184,6 +197,40 @@ export class ApiRepository implements WorkRepository {
       },
     );
     return result.run;
+  }
+  async publisherStatus() {
+    await this.connect();
+    return this.request<PublisherStatus>("/v1/publisher");
+  }
+  async publishPr(
+    run: Run,
+    target: { repository: string; base: string; branch: string },
+  ) {
+    await this.connect();
+    return this.request<Run>(`/v1/work-items/${run.id}/pull-request`, {
+      method: "POST",
+      body: JSON.stringify({ expected_version: run.version, ...target }),
+    });
+  }
+  async refreshPr(run: Run) {
+    await this.connect();
+    return this.request<Run>(`/v1/work-items/${run.id}/pull-request/refresh`, {
+      method: "POST",
+      body: JSON.stringify({ expected_version: run.version }),
+    });
+  }
+  async assessPr(run: Run, decision: string, text: string, key: string) {
+    await this.connect();
+    return this.request<Run>(`/v1/work-items/${run.id}/pull-request/reviews`, {
+      method: "POST",
+      body: JSON.stringify({
+        expected_version: run.version,
+        head_sha: run.pullRequest?.headSha,
+        decision,
+        text,
+        request_key: key,
+      }),
+    });
   }
   async agentStatus() {
     await this.connect();

@@ -35,3 +35,7 @@ The detailed future product plan is indexed in [docs/README.md](README.md). It d
 ## Codex 구독 adapter
 
 공식 SDK·CLI 0.159.3을 고정했다. 별도 ChatGPT 로그인과 owner의 버튼 요청으로 질문·명세를 작성하며 `agent_calls`에 실행·중단·사용량 메타데이터를 저장한다. 작성한 명세는 계획 해시에 포함하고 사람 승인을 요구한다. 실제 계정 호출은 아직 검증 전이고 코드 실행은 모의다. [Codex 구독 연결](codex-subscription.md)에서 환경·인증·한도와 테스트 범위를 확인한다.
+
+## PR 제출과 사람 평가
+
+기존 구현 브랜치용 `GitHubCli` adapter와 `PullRequests` service를 추가했다. 결과 검토 화면에서 별도 제출 요청을 받고 실제 PR·파일·head SHA·CI를 읽는다. DB 예약과 work ID marker로 생성 재시도를 복구한다. 평가는 원격 SHA 재확인과 작업 버전 검사를 거쳐 커밋별로 저장하며, PR을 연결한 작업은 모의 accept로 완료할 수 없다. 평가·수정 의견은 내부 기록이고 GitHub Review/댓글/병합은 자동 실행하지 않는다. Codex 구현 worker, GitHub App, webhook, 자동 수정 실행은 후속이다. [설정·한계·검증](pull-request-review.md)

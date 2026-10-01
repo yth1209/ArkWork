@@ -4,6 +4,7 @@ import type {
   ExecutionPlan,
   Specification,
   AgentTask,
+  PullRequestReview,
 } from "../src/factory";
 
 export type Row = Record<string, unknown> & {
@@ -20,6 +21,7 @@ export type Row = Record<string, unknown> & {
   attempt_count: number;
   failure_reason: string | null;
   human_workflow: boolean;
+  pull_request: PullRequestReview | null;
   agent_questions: string[] | null;
   agent_specification: Specification | null;
   agent_task: AgentTask | null;
@@ -64,6 +66,7 @@ export function toRun(row: Row): Run {
     attemptCount: row.attempt_count,
     failureReason: row.failure_reason ?? undefined,
     humanWorkflow: row.human_workflow,
+    pullRequest: row.pull_request ?? undefined,
     agentQuestions: row.agent_questions ?? undefined,
     agentSpecification: row.agent_specification ?? undefined,
     agentTask: row.agent_task ?? undefined,

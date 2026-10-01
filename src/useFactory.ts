@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Run, AgentStatus } from "./factory";
+import type { Run, AgentStatus, PublisherStatus } from "./factory";
 import {
   ApiRepository,
   DemoRepository,
@@ -23,6 +23,8 @@ export function useFactory(mode: Mode, selectedId: string | null) {
     runs: Run[];
   }>({ repository, runs: [] });
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
+  const [publisherStatus, setPublisherStatus] =
+    useState<PublisherStatus | null>(null);
   const [issue, setIssue] = useState("");
   const [loading, setLoading] = useState(true);
   const runs = snapshot.repository === repository ? snapshot.runs : [];
@@ -116,6 +118,22 @@ export function useFactory(mode: Mode, selectedId: string | null) {
     };
   }, [repository]);
 
+  useEffect(() => {
+    let alive = true;
+    setPublisherStatus(null);
+    void repository
+      .publisherStatus?.()
+      .then((status) => {
+        if (alive) setPublisherStatus(status);
+      })
+      .catch(() => {
+        if (alive) setPublisherStatus({ enabled: false, repositories: [] });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [repository]);
+
   const upsert = useCallback(
     (run: Run) =>
       setSnapshot((current) => {
@@ -141,6 +159,7 @@ export function useFactory(mode: Mode, selectedId: string | null) {
   return {
     runs,
     agentStatus,
+    publisherStatus,
     issue,
     loading,
     maxLength: repository.maxLength,
@@ -152,6 +171,21 @@ export function useFactory(mode: Mode, selectedId: string | null) {
     cancel: async (run: Run) => {
       const next = await repository.cancel(run);
       upsert(next);
+    },
+    publishPr: async (
+      run: Run,
+      target: { repository: string; base: string; branch: string },
+    ) => {
+      if (!repository.publishPr)
+        throw new Error("PR 제출은 서버 모드에서 지원합니다.");
+      upsert(await repository.publishPr(run, target));
+    },
+    refreshPr: async (run: Run) => {
+      if (repository.refreshPr) upsert(await repository.refreshPr(run));
+    },
+    assessPr: async (run: Run, decision: string, text: string, key: string) => {
+      if (repository.assessPr)
+        upsert(await repository.assessPr(run, decision, text, key));
     },
     generate: async (run: Run, phase: string, key: string) => {
       if (!repository.generate)

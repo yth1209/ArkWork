@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CodexPanel, CodexSpecification, agentBusy } from "./CodexPanel";
+import { PullRequestPanel } from "./PullRequestPanel";
 import { HumanCheckpoint, HumanHistory } from "./HumanCheckpoint";
 import { useFactory } from "./useFactory";
 import type { Mode } from "./repositories";
@@ -196,15 +197,18 @@ export default function App() {
   }
 
   function download(run: Run) {
-    const content = `# ArkWork ${label} 작업\n\n> 실제 코드 생성, 테스트 또는 PR 생성은 실행되지 않았습니다. Codex 질문·명세 작성 여부는 아래에 표시합니다.\n\n## 요구사항\n${run.prompt}\n\n## 상태\n${statusText[run.status]}\n\n## 다음 단계\n- 요구사항의 수용 기준 정의\n- 저장소와 실행 환경 연결\n- AI 실행 및 실제 검증 연결\n- 변경 내용을 PR로 검토\n`;
+    const content = `# ArkWork ${label} 작업\n\n> 이 작업의 코드 생성·테스트 실행은 모의입니다. 실제 PR 제출 및 Codex 질문·명세 작성 여부는 아래에 별도로 표시합니다.\n\n## 요구사항\n${run.prompt}\n\n## 상태\n${statusText[run.status]}\n\n## 다음 단계\n- 요구사항의 수용 기준 정의\n- 저장소와 실행 환경 연결\n- AI 실행 및 실제 검증 연결\n- 변경 내용을 PR로 검토\n`;
     const aiContent = run.agentSpecification
       ? `\n## Codex 명세 초안\n${run.agentSpecification.summary}\n\n### 완료 조건\n${run.agentSpecification.acceptanceCriteria.map((item) => `- ${item}`).join("\n")}\n\n### 제외 범위\n${run.agentSpecification.excludedScope.map((item) => `- ${item}`).join("\n")}\n`
       : "\n> 현재 요약에 Codex 생성 명세는 없습니다.\n";
     const humanContent = run.humanWorkflow
       ? `\n## 사용자 입력\n${run.clarification}\n\n## 수정 의견 · ${run.revision ?? 0}회차\n${run.feedback || "없음"}\n\n## 구현 전 결정\n${run.decision || "결정 대기"}\n\n## 답변과 결정 기록\n${(run.humanHistory ?? []).map((item) => `- ${item.at} · ${item.action}: ${item.text}`).join("\n")}\n`
       : "";
+    const prContent = run.pullRequest
+      ? `\n## 실제 PR 제출\n${run.pullRequest.url ?? "생성 결과 확인 중"}\n브랜치: ${run.pullRequest.repository} ${run.pullRequest.branch} → ${run.pullRequest.base}\n검토 커밋: ${run.pullRequest.headSha ?? "미확인"}\n보고된 CI: ${run.pullRequest.checks ?? "미확인"}\n\n### ArkWork 내부 평가 기록\n${run.pullRequest.reviews.map((review) => `- ${review.at} · ${review.actor} · ${review.decision} · ${review.headSha}: ${review.text}`).join("\n")}\n\n> GitHub Review 승인이나 병합 기록이 아닙니다.\n`
+      : "\n> 실제 PR을 제출하지 않았습니다.\n";
     const url = URL.createObjectURL(
-      new Blob([content + humanContent + aiContent], {
+      new Blob([content + humanContent + aiContent + prContent], {
         type: "text/markdown;charset=utf-8",
       }),
     );
@@ -504,9 +508,9 @@ export default function App() {
                 </span>
               </div>
               <p className="notice">
-                구현·테스트·PR 생성은 {label} 진행입니다. Codex로 작성한
-                질문·명세는 별도로 표시하며 실제 코드 생성은 아직 연결하지
-                않았습니다.
+                구현·테스트는 {label} 진행입니다. 실제 PR은 별도로 구현 브랜치를
+                제출해야 생성됩니다. Codex로 작성한 질문·명세는 별도로 표시하며
+                실제 코드 생성은 아직 연결하지 않았습니다.
               </p>
               {mode === "api" && (
                 <CodexPanel
@@ -521,6 +525,19 @@ export default function App() {
                   }}
                 />
               )}
+              {mode === "api" &&
+                ["review", "completed"].includes(selected.status) && (
+                  <PullRequestPanel
+                    key={selected.id}
+                    run={selected}
+                    connection={factory.publisherStatus}
+                    publish={(target) => factory.publishPr(selected, target)}
+                    refresh={() => factory.refreshPr(selected)}
+                    assess={(decision, text, key) =>
+                      factory.assessPr(selected, decision, text, key)
+                    }
+                  />
+                )}
               <HumanCheckpoint
                 key={`${selected.id}-${selected.status}-${selected.revision}`}
                 run={selected}
@@ -641,7 +658,9 @@ export default function App() {
                               ? `${label} 단계 완료`
                               : index === selected.stage
                                 ? selected.status === "review"
-                                  ? "모의 결과 검토 대기"
+                                  ? selected.pullRequest
+                                    ? "실제 PR 평가 대기"
+                                    : "모의 결과 검토 대기"
                                   : selected.status === "cancelled"
                                     ? "진행 중단"
                                     : selected.status === "running"
@@ -659,7 +678,9 @@ export default function App() {
                 {selected.status === "running"
                   ? `현재 단계: ${stages[selected.stage]}. 잠시 후 다음 모의 단계로 이동합니다.`
                   : selected.status === "review"
-                    ? "모의 진행이 완료되었습니다. 아래에서 작업 요약을 확인하세요."
+                    ? selected.pullRequest
+                      ? "제출한 구현 PR의 변경 내용과 완료 조건을 비교해 평가해 주세요."
+                      : "모의 진행이 완료되었습니다. 아래에서 작업 요약을 확인하세요."
                     : selected.status === "awaiting_approval"
                       ? "승인 전에는 실행 큐나 모의 진행이 시작되지 않습니다."
                       : selected.status === "awaiting_input" ||
@@ -676,7 +697,11 @@ export default function App() {
               {["review", "completed"].includes(selected.status) && (
                 <div className="panel result">
                   <span className="eyebrow">REVIEW HANDOFF</span>
-                  <h2>실제 구현 전에 확인할 항목</h2>
+                  <h2>
+                    {selected.pullRequest
+                      ? "PR 평가와 작업 요약"
+                      : "실제 구현 전에 확인할 항목"}
+                  </h2>
                   {selected.agentSpecification && (
                     <CodexSpecification
                       specification={selected.agentSpecification}
@@ -705,16 +730,26 @@ export default function App() {
                       </p>
                     </div>
                   )}
-                  <p>
-                    입력한 요구사항은 저장되었습니다. 다음 항목은 실제 Software
-                    Factory 연결을 위한 검토 목록입니다.
-                  </p>
-                  <ul>
-                    <li>사용자와 핵심 사용 시나리오 정의</li>
-                    <li>기능별 완료 조건과 테스트 기준 합의</li>
-                    <li>저장소, 실행 환경 및 AI 제공자 연결</li>
-                    <li>구현 결과를 별도 브랜치와 PR로 검토</li>
-                  </ul>
+                  {selected.pullRequest ? (
+                    <p>
+                      제출한 실제 구현 PR과 커밋별 평가 기록은 위에서 확인할 수
+                      있습니다. 이 화면의 승인으로 GitHub PR을 병합하지
+                      않습니다.
+                    </p>
+                  ) : (
+                    <>
+                      <p>
+                        입력한 요구사항은 저장되었습니다. 다음 항목은 실제
+                        Software Factory 연결을 위한 검토 목록입니다.
+                      </p>
+                      <ul>
+                        <li>사용자와 핵심 사용 시나리오 정의</li>
+                        <li>기능별 완료 조건과 테스트 기준 합의</li>
+                        <li>저장소, 실행 환경 및 AI 제공자 연결</li>
+                        <li>구현 결과를 별도 브랜치와 PR로 검토</li>
+                      </ul>
+                    </>
+                  )}
                   <button
                     className="primary"
                     onClick={() => download(selected)}

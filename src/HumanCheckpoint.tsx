@@ -16,6 +16,7 @@ export function HumanCheckpoint({
     void respond("revise", text);
   };
   if (
+    run.pullRequest ||
     !run.humanWorkflow ||
     ![
       "awaiting_input",
@@ -144,6 +145,8 @@ export function HumanCheckpoint({
 }
 
 const actionNames: Record<string, string> = {
+  approve_pr: "PR 결과 승인",
+  request_pr_changes: "PR 수정 요청",
   answer: "요구사항 답변",
   revise: "수정 요청",
   continue: "진행 결정",

@@ -73,6 +73,12 @@ export async function respond(
         "LEGACY_WORK",
         "이전 작업은 단계별 개입을 지원하지 않습니다. 새 작업을 만들어 주세요.",
       );
+    if (row.pull_request)
+      throw new HttpError(
+        409,
+        "PR_REVIEW_REQUIRED",
+        "연결된 PR 화면에서 변경 내용을 평가하세요. 모의 결과 승인으로 완료할 수 없습니다.",
+      );
     const allowed: Record<string, string[]> = {
       awaiting_input: ["answer"],
       awaiting_run_approval: ["revise"],
