@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Run } from "./factory";
+import type { Run, AgentStatus } from "./factory";
 import {
   ApiRepository,
   DemoRepository,
@@ -22,6 +22,7 @@ export function useFactory(mode: Mode, selectedId: string | null) {
     repository: typeof repository;
     runs: Run[];
   }>({ repository, runs: [] });
+  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [issue, setIssue] = useState("");
   const [loading, setLoading] = useState(true);
   const runs = snapshot.repository === repository ? snapshot.runs : [];
@@ -87,6 +88,34 @@ export function useFactory(mode: Mode, selectedId: string | null) {
     };
   }, [repository]);
 
+  useEffect(() => {
+    let alive = true;
+    setAgentStatus(null);
+    const refresh = async () => {
+      if (!repository.agentStatus) return;
+      try {
+        const status = await repository.agentStatus();
+        if (alive) setAgentStatus(status);
+      } catch {
+        if (alive)
+          setAgentStatus({
+            enabled: false,
+            authenticated: false,
+            authMode: "chatgpt-subscription",
+            message: "Codex 연결 상태를 확인할 수 없습니다.",
+          });
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => {
+      void refresh();
+    }, 15000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [repository]);
+
   const upsert = useCallback(
     (run: Run) =>
       setSnapshot((current) => {
@@ -111,6 +140,7 @@ export function useFactory(mode: Mode, selectedId: string | null) {
 
   return {
     runs,
+    agentStatus,
     issue,
     loading,
     maxLength: repository.maxLength,
@@ -122,6 +152,15 @@ export function useFactory(mode: Mode, selectedId: string | null) {
     cancel: async (run: Run) => {
       const next = await repository.cancel(run);
       upsert(next);
+    },
+    generate: async (run: Run, phase: string, key: string) => {
+      if (!repository.generate)
+        throw new Error("Codex 호출은 서버 모드에서 지원합니다.");
+      upsert(await repository.generate(run, phase, key));
+    },
+    cancelAgent: async (run: Run) => {
+      if (!repository.cancelAgent) return;
+      upsert(await repository.cancelAgent(run));
     },
     respond: async (run: Run, action: string, text: string, key: string) => {
       if (!repository.respond)

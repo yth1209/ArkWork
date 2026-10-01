@@ -14,10 +14,16 @@
     "test": "vitest run",
     "preview": "vite preview",
     "test:smoke": "node scripts/smoke.mjs",
-    "test:api-smoke": "node scripts/api-smoke.mjs"
+    "test:api-smoke": "node scripts/api-smoke.mjs",
+    "codex:login": "node scripts/codex-session.mjs login",
+    "codex:status": "node scripts/codex-session.mjs status",
+    "codex:logout": "node scripts/codex-session.mjs logout",
+    "test:codex-smoke": "node scripts/codex-smoke.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.8",
+    "@openai/codex": "0.159.3",
+    "@openai/codex-sdk": "0.159.3",
     "fastify": "5.12.5",
     "pg": "8.23.1",
     "proper-lockfile": "4.1.2",

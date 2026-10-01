@@ -4,6 +4,7 @@ import {
   readRuns,
   storageKey,
   type Run,
+  type AgentStatus,
 } from "./factory";
 
 export type Mode = "demo" | "api";
@@ -14,6 +15,9 @@ export interface WorkRepository {
   create(prompt: string, key: string): Promise<Run>;
   cancel(run: Run): Promise<Run>;
   approve?(run: Run): Promise<Run>;
+  agentStatus?(): Promise<AgentStatus>;
+  generate?(run: Run, phase: string, key: string): Promise<Run>;
+  cancelAgent?(run: Run): Promise<Run>;
   respond?(run: Run, action: string, text: string, key: string): Promise<Run>;
   subscribe(refresh: () => void, issue: (message: string) => void): () => void;
   watch?(
@@ -180,6 +184,30 @@ export class ApiRepository implements WorkRepository {
       },
     );
     return result.run;
+  }
+  async agentStatus() {
+    await this.connect();
+    return this.request<AgentStatus>("/v1/agent");
+  }
+  async generate(run: Run, phase: string, key: string) {
+    await this.connect();
+    return (
+      await this.request<{ run: Run }>(`/v1/work-items/${run.id}/codex`, {
+        method: "POST",
+        body: JSON.stringify({
+          expected_version: run.version,
+          phase,
+          request_key: key,
+        }),
+      })
+    ).run;
+  }
+  async cancelAgent(run: Run) {
+    await this.connect();
+    return this.request<Run>(`/v1/work-items/${run.id}/codex/cancel`, {
+      method: "POST",
+      body: "{}",
+    });
   }
   async respond(run: Run, action: string, text: string, key: string) {
     await this.connect();

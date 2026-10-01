@@ -1,3 +1,20 @@
+export type Specification = {
+  summary: string;
+  acceptanceCriteria: string[];
+  excludedScope: string[];
+};
+export type AgentTask = {
+  id: string;
+  phase: "questions" | "specification";
+  status: string;
+  errorCode?: string;
+};
+export type AgentStatus = {
+  enabled: boolean;
+  authenticated: boolean;
+  authMode: "chatgpt-subscription";
+  message: string;
+};
 export const stages = [
   "요구사항 분석",
   "구현 계획",
@@ -12,7 +29,13 @@ export type ExecutionPlan = {
   limits: { maxSteps: number; maxAttempts: number };
   policyVersion: string;
   scope: string;
-  human?: { clarification: string; feedback: string; revision: number };
+  human?: {
+    clarification: string;
+    feedback: string;
+    revision: number;
+    questions?: string[];
+    specification?: Specification;
+  };
 };
 export type Run = {
   id: string;
@@ -42,6 +65,9 @@ export type Run = {
   feedback?: string;
   decision?: string;
   revision?: number;
+  agentQuestions?: string[];
+  agentSpecification?: Specification;
+  agentTask?: AgentTask;
   humanHistory?: { action: string; text: string; at: string }[];
 };
 export const storageKey = "arkwork.demo.runs.v1";

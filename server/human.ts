@@ -58,6 +58,15 @@ export async function respond(
         "VERSION_CONFLICT",
         "작업 상태가 변경됐습니다. 최신 내용을 확인한 뒤 다시 제출하세요.",
       );
+    if (
+      row.agent_task &&
+      ["pending", "running", "cancelling"].includes(row.agent_task.status)
+    )
+      throw new HttpError(
+        409,
+        "AGENT_BUSY",
+        "Codex 호출을 마치거나 중단한 뒤 응답하세요.",
+      );
     if (!row.human_workflow)
       throw new HttpError(
         409,
@@ -94,6 +103,8 @@ export async function respond(
           "수정 회차는 3회까지 가능합니다. 새 작업으로 이어가 주세요.",
         );
       row.feedback = value;
+      row.agent_specification = null;
+      row.agent_task = null;
       row.revision++;
       row.stage = 0;
       row.decision = "";
@@ -139,7 +150,7 @@ export async function respond(
     const result = (
       await tx.query<Row>(
         `UPDATE work_items SET state=$2,stage=$3,clarification=$4,feedback=$5,decision=$6,revision=$7,
-      execution_plan=$8,plan_hash=$9,human_history=$10,version=version+1, failure_reason=NULL WHERE id=$1 RETURNING *`,
+      execution_plan=$8,plan_hash=$9,human_history=$10,agent_specification=$11,agent_task=$12,version=version+1, failure_reason=NULL WHERE id=$1 RETURNING *`,
         [
           id,
           state,
@@ -151,6 +162,10 @@ export async function respond(
           JSON.stringify(plan),
           hash,
           JSON.stringify(history),
+          row.agent_specification
+            ? JSON.stringify(row.agent_specification)
+            : null,
+          row.agent_task ? JSON.stringify(row.agent_task) : null,
         ],
       )
     ).rows[0];

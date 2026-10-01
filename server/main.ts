@@ -1,4 +1,5 @@
 import { openDatabase, migrate } from "./database";
+import { SubscriptionCodex } from "./codex";
 import { buildApp } from "./app";
 
 if (process.env.ARKWORK_DEV_AUTH !== "1")
@@ -7,9 +8,10 @@ if (process.env.ARKWORK_DEV_AUTH !== "1")
   );
 const db = await openDatabase(process.env.DATABASE_URL ?? ".runtime/database");
 await migrate(db);
-const { app, store } = buildApp(db, {
+const { app, store, agent } = buildApp(db, {
   devAuth: process.env.ARKWORK_DEV_AUTH === "1",
   origin: process.env.ARKWORK_UI_ORIGIN,
+  agent: new SubscriptionCodex(),
 });
 let inFlight: Promise<void> | undefined;
 let stopping = false;
@@ -24,11 +26,11 @@ try {
 }
 const timer = setInterval(() => {
   if (inFlight || stopping) return;
-  inFlight = store
-    .tick()
+  inFlight = Promise.all([store.tick(), agent?.tick()])
+    .then(() => undefined)
     .catch(() => {
       console.error(
-        "모의 실행 진행을 갱신하지 못했습니다. 다음 주기에 재시도합니다.",
+        "작업 실행 상태를 갱신하지 못했습니다. 다음 주기에 상태를 다시 확인합니다.",
       );
     })
     .finally(() => {
@@ -36,7 +38,7 @@ const timer = setInterval(() => {
     });
 }, 300);
 console.log(
-  "ArkWork 로컬 개발 API 준비 완료 · 서버 모의 실행 · 실제 AI 미연결",
+  "ArkWork 로컬 개발 API 준비 완료 · 구현은 서버 모의 · Codex 질문·명세는 별도 활성화와 구독 로그인 필요",
 );
 async function shutdown() {
   if (stopping) return;

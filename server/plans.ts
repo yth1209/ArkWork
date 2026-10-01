@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ExecutionPlan } from "../src/factory";
 import type { Database } from "./database";
 import { event, type Row } from "./work";
 
@@ -16,7 +17,7 @@ export const hashPlan = (plan: unknown) =>
   createHash("sha256").update(canonical(plan)).digest("hex");
 export function executionPlan(
   requirements: string,
-  human?: { clarification: string; feedback: string; revision: number },
+  human?: ExecutionPlan["human"],
 ) {
   const plan = {
     executionMode: "fixture" as const,
@@ -68,6 +69,10 @@ export function rowPlan(row: Row) {
           clarification: row.clarification,
           feedback: row.feedback,
           revision: row.revision,
+          ...(row.agent_questions ? { questions: row.agent_questions } : {}),
+          ...(row.agent_specification
+            ? { specification: row.agent_specification }
+            : {}),
         }
       : undefined,
   );

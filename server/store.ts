@@ -172,6 +172,15 @@ export class Store {
           "VERSION_CONFLICT",
           "작업 상태가 변경됐습니다. 새로 확인해 주세요.",
         );
+      if (
+        row.agent_task &&
+        ["pending", "running", "cancelling"].includes(row.agent_task.status)
+      )
+        throw new HttpError(
+          409,
+          "AGENT_BUSY",
+          "Codex 호출을 마치거나 중단한 뒤 계획을 승인하세요.",
+        );
       if (row.state !== "awaiting_run_approval")
         throw new HttpError(
           409,

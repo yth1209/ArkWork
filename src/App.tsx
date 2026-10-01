@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CodexPanel, CodexSpecification, agentBusy } from "./CodexPanel";
 import { HumanCheckpoint, HumanHistory } from "./HumanCheckpoint";
 import { useFactory } from "./useFactory";
 import type { Mode } from "./repositories";
@@ -135,6 +136,39 @@ export default function App() {
     }
   }
 
+  const agentRequest = useRef<{ signature: string; key: string } | null>(null);
+  async function generate(run: Run, phase: string) {
+    if (actionPending) return;
+    setActionPending(true);
+    const signature = JSON.stringify([run.id, run.version, phase]);
+    if (agentRequest.current?.signature !== signature)
+      agentRequest.current = { signature, key: crypto.randomUUID() };
+    try {
+      await factory.generate(run, phase, agentRequest.current.key);
+      agentRequest.current = null;
+      setError("");
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Codex 호출을 시작하지 못했습니다.",
+      );
+    } finally {
+      setActionPending(false);
+    }
+  }
+  async function cancelAgent(run: Run) {
+    if (actionPending) return;
+    setActionPending(true);
+    try {
+      await factory.cancelAgent(run);
+      setError("");
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Codex 호출을 중단하지 못했습니다.",
+      );
+    } finally {
+      setActionPending(false);
+    }
+  }
   const responseRequest = useRef<{ signature: string; key: string } | null>(
     null,
   );
@@ -162,12 +196,15 @@ export default function App() {
   }
 
   function download(run: Run) {
-    const content = `# ArkWork ${label} 작업\n\n> 실제 코드 생성, 테스트 또는 PR 생성은 실행되지 않았습니다.\n\n## 요구사항\n${run.prompt}\n\n## 상태\n${statusText[run.status]}\n\n## 다음 단계\n- 요구사항의 수용 기준 정의\n- 저장소와 실행 환경 연결\n- AI 실행 및 실제 검증 연결\n- 변경 내용을 PR로 검토\n`;
+    const content = `# ArkWork ${label} 작업\n\n> 실제 코드 생성, 테스트 또는 PR 생성은 실행되지 않았습니다. Codex 질문·명세 작성 여부는 아래에 표시합니다.\n\n## 요구사항\n${run.prompt}\n\n## 상태\n${statusText[run.status]}\n\n## 다음 단계\n- 요구사항의 수용 기준 정의\n- 저장소와 실행 환경 연결\n- AI 실행 및 실제 검증 연결\n- 변경 내용을 PR로 검토\n`;
+    const aiContent = run.agentSpecification
+      ? `\n## Codex 명세 초안\n${run.agentSpecification.summary}\n\n### 완료 조건\n${run.agentSpecification.acceptanceCriteria.map((item) => `- ${item}`).join("\n")}\n\n### 제외 범위\n${run.agentSpecification.excludedScope.map((item) => `- ${item}`).join("\n")}\n`
+      : "\n> 현재 요약에 Codex 생성 명세는 없습니다.\n";
     const humanContent = run.humanWorkflow
       ? `\n## 사용자 입력\n${run.clarification}\n\n## 수정 의견 · ${run.revision ?? 0}회차\n${run.feedback || "없음"}\n\n## 구현 전 결정\n${run.decision || "결정 대기"}\n\n## 답변과 결정 기록\n${(run.humanHistory ?? []).map((item) => `- ${item.at} · ${item.action}: ${item.text}`).join("\n")}\n`
       : "";
     const url = URL.createObjectURL(
-      new Blob([content + humanContent], {
+      new Blob([content + humanContent + aiContent], {
         type: "text/markdown;charset=utf-8",
       }),
     );
@@ -237,7 +274,7 @@ export default function App() {
             <span className="dot review" />
             {mode === "api" ? "서버 모의 실행 환경" : "UI 데모 환경"}
           </div>
-          <p>실제 AI 실행은 아직 연결되지 않았습니다.</p>
+          <p>코드 실행은 모의입니다. Codex 질문·명세는 별도 구독 연결입니다.</p>
           <div className="profile">
             <span className="avatar">Y</span>
             <div>
@@ -281,7 +318,8 @@ export default function App() {
           {mode === "api" && (
             <p className="notice">
               로컬 개발 API · PostgreSQL 엔진에 기록 저장 · 서버 측 모의
-              진행입니다. 실제 AI 실행과 운영용 인증은 아직 연결하지 않았습니다.
+              진행입니다. 구현·테스트는 모의입니다. Codex 질문·명세는 구독
+              로그인 후 별도로 호출합니다.
             </p>
           )}
           {issue && (
@@ -398,8 +436,9 @@ export default function App() {
                   ))}
                 </ol>
                 <p>
-                  현재는 진행 흐름을 시뮬레이션합니다. AI 실행과 저장소 연결은
-                  다음 단계에서 제공합니다.
+                  구현 진행은 시뮬레이션입니다. Codex 질문·명세는 별도 구독
+                  연결로 작성하며 실제 코드 실행과 저장소 연결은 후속
+                  단계입니다.
                 </p>
               </section>
             </>
@@ -465,13 +504,27 @@ export default function App() {
                 </span>
               </div>
               <p className="notice">
-                {label} 시뮬레이션입니다. 실제 AI 호출, 코드 생성, 테스트 및 PR
-                생성은 수행하지 않습니다.
+                구현·테스트·PR 생성은 {label} 진행입니다. Codex로 작성한
+                질문·명세는 별도로 표시하며 실제 코드 생성은 아직 연결하지
+                않았습니다.
               </p>
+              {mode === "api" && (
+                <CodexPanel
+                  run={selected}
+                  connection={factory.agentStatus}
+                  pending={actionPending}
+                  generate={(phase) => {
+                    void generate(selected, phase);
+                  }}
+                  cancel={() => {
+                    void cancelAgent(selected);
+                  }}
+                />
+              )}
               <HumanCheckpoint
-                key={`${selected.id}-${selected.version}`}
+                key={`${selected.id}-${selected.status}-${selected.revision}`}
                 run={selected}
-                pending={actionPending}
+                pending={actionPending || agentBusy(selected)}
                 respond={(action, text) => respond(selected, action, text)}
               />
               {selected.status === "awaiting_approval" && selected.plan && (
@@ -479,6 +532,11 @@ export default function App() {
                   <span className="eyebrow">EXECUTION APPROVAL</span>
                   <h2>실행 계획</h2>
                   <p>{selected.plan.scope}</p>
+                  {selected.agentSpecification && (
+                    <CodexSpecification
+                      specification={selected.agentSpecification}
+                    />
+                  )}
                   {selected.plan.human && (
                     <div className="plan-inputs">
                       <h3>이번 계획에 반영된 사용자 입력</h3>
@@ -497,8 +555,8 @@ export default function App() {
                         </p>
                       )}
                       <p className="muted">
-                        답변과 수정 의견을 계획에 고정해 저장합니다. 실제 명세
-                        생성·코드 수정은 아직 수행하지 않습니다.
+                        답변·수정 의견과 Codex 명세가 있으면 함께 계획에
+                        고정합니다. 실제 코드 수정은 아직 수행하지 않습니다.
                       </p>
                     </div>
                   )}
@@ -517,7 +575,7 @@ export default function App() {
                       <dd>{selected.plan.limits.maxAttempts}회</dd>
                     </div>
                     <div>
-                      <dt>유료 AI 호출</dt>
+                      <dt>이 승인으로 추가 AI 호출</dt>
                       <dd>없음 · 모의 실행 전용</dd>
                     </div>
                   </dl>
@@ -531,13 +589,15 @@ export default function App() {
                       type="checkbox"
                       checked={approvalAccepted}
                       onChange={(e) => setApprovalAccepted(e.target.checked)}
-                      disabled={actionPending}
+                      disabled={actionPending || agentBusy(selected)}
                     />
                     위 범위와 제한을 확인했으며 서버 모의 실행을 승인합니다.
                   </label>
                   <button
                     className="primary"
-                    disabled={!approvalAccepted || actionPending}
+                    disabled={
+                      !approvalAccepted || actionPending || agentBusy(selected)
+                    }
                     onClick={() => {
                       void approve(selected);
                     }}
@@ -617,6 +677,11 @@ export default function App() {
                 <div className="panel result">
                   <span className="eyebrow">REVIEW HANDOFF</span>
                   <h2>실제 구현 전에 확인할 항목</h2>
+                  {selected.agentSpecification && (
+                    <CodexSpecification
+                      specification={selected.agentSpecification}
+                    />
+                  )}
                   {selected.humanWorkflow && (
                     <div className="plan-inputs">
                       <p>

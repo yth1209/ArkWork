@@ -1,5 +1,10 @@
 import type { Queryable } from "./database";
-import type { Run, ExecutionPlan } from "../src/factory";
+import type {
+  Run,
+  ExecutionPlan,
+  Specification,
+  AgentTask,
+} from "../src/factory";
 
 export type Row = Record<string, unknown> & {
   id: string;
@@ -15,6 +20,9 @@ export type Row = Record<string, unknown> & {
   attempt_count: number;
   failure_reason: string | null;
   human_workflow: boolean;
+  agent_questions: string[] | null;
+  agent_specification: Specification | null;
+  agent_task: AgentTask | null;
   clarification: string;
   feedback: string;
   decision: string;
@@ -56,6 +64,9 @@ export function toRun(row: Row): Run {
     attemptCount: row.attempt_count,
     failureReason: row.failure_reason ?? undefined,
     humanWorkflow: row.human_workflow,
+    agentQuestions: row.agent_questions ?? undefined,
+    agentSpecification: row.agent_specification ?? undefined,
+    agentTask: row.agent_task ?? undefined,
     clarification: row.clarification,
     feedback: row.feedback,
     decision: row.decision,

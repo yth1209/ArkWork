@@ -1,6 +1,8 @@
 import Fastify from "fastify";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Database } from "./database";
+import { AgentService } from "./agent";
+import type { AgentProvider } from "./codex";
 import { HttpError, Store } from "./store";
 
 const hash = (token: string) =>
@@ -24,6 +26,7 @@ export function buildApp(
     origin?: string;
     intervalMs?: number;
     cookieSecure?: boolean;
+    agent?: AgentProvider;
   },
 ) {
   if (!options.devAuth)
@@ -36,6 +39,7 @@ export function buildApp(
     ajv: { customOptions: { removeAdditional: false } },
   });
   const store = new Store(db, options.intervalMs);
+  const agent = options.agent ? new AgentService(db, options.agent) : undefined;
   const origin = options.origin ?? "http://localhost:5173";
   const allowedHosts = new Set(["localhost", "127.0.0.1"]);
   const sessions = new WeakMap<
@@ -44,6 +48,7 @@ export function buildApp(
   >();
   const streams = new Set<() => void>();
   app.addHook("preClose", async () => {
+    await agent?.close();
     for (const close of streams) close();
     streams.clear();
   });
@@ -190,6 +195,69 @@ export function buildApp(
     },
   );
 
+  app.get("/v1/agent", async () =>
+    agent
+      ? agent.provider.status()
+      : {
+          enabled: false,
+          authenticated: false,
+          authMode: "chatgpt-subscription",
+          message: "서버에서 Codex 연결을 아직 활성화하지 않았습니다.",
+        },
+  );
+  app.post<{
+    Params: { id: string };
+    Body: {
+      expected_version: number;
+      phase: "questions" | "specification";
+      request_key: string;
+    };
+  }>(
+    "/v1/work-items/:id/codex",
+    {
+      schema: {
+        params,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            expected_version: { type: "integer", minimum: 1 },
+            phase: { type: "string", enum: ["questions", "specification"] },
+            request_key: { type: "string", pattern: "^[a-zA-Z0-9-]{8,100}$" },
+          },
+          required: ["expected_version", "phase", "request_key"],
+        },
+      },
+    },
+    async (request) => {
+      if (!agent) {
+        await store.get(workspace(request), request.params.id);
+        throw new HttpError(
+          409,
+          "CODEX_DISABLED",
+          "서버의 Codex 연결을 먼저 활성화하세요.",
+        );
+      }
+      return agent.start(
+        workspace(request),
+        request.params.id,
+        request.body.expected_version,
+        request.body.phase,
+        request.body.request_key,
+      );
+    },
+  );
+  app.post<{ Params: { id: string }; Body: Record<string, never> }>(
+    "/v1/work-items/:id/codex/cancel",
+    {
+      schema: { params, body: { type: "object", additionalProperties: false } },
+    },
+    async (request) => {
+      if (!agent) return store.get(workspace(request), request.params.id);
+      return agent.cancel(workspace(request), request.params.id);
+    },
+  );
+
   app.get("/v1/session", async (request) => ({
     workspaceId: workspace(request),
     authMode: "local-development",
@@ -293,12 +361,16 @@ export function buildApp(
         },
       },
     },
-    (request) =>
-      store.cancel(
+    async (request) => {
+      const run = await store.cancel(
         workspace(request),
         request.params.id,
         request.body.expected_version,
-      ),
+      );
+      return (
+        (await agent?.cancel(workspace(request), request.params.id)) ?? run
+      );
+    },
   );
 
   app.post<{
@@ -464,5 +536,5 @@ export function buildApp(
       await send();
     },
   );
-  return { app, store };
+  return { app, store, agent };
 }

@@ -35,12 +35,20 @@ export function HumanCheckpoint({
             아래 질문에 답하면 답변을 포함한 실행 계획을 검토할 수 있습니다.
           </p>
           <ol>
-            <li>누가 사용하며 가장 중요한 사용 시나리오는 무엇인가요?</li>
-            <li>어떤 동작을 확인하면 이번 작업이 완료됐다고 판단하나요?</li>
-            <li>이번 작업에서 제외할 기능이나 제약은 무엇인가요?</li>
+            {(
+              run.agentQuestions ?? [
+                "누가 사용하며 가장 중요한 사용 시나리오는 무엇인가요?",
+                "어떤 동작을 확인하면 이번 작업이 완료됐다고 판단하나요?",
+                "이번 작업에서 제외할 기능이나 제약은 무엇인가요?",
+              ]
+            ).map((question) => (
+              <li key={question}>{question}</li>
+            ))}
           </ol>
           <p className="muted">
-            현재 질문은 데모용 공통 질문이며 AI가 분석해 생성한 질문이 아닙니다.
+            {run.agentQuestions
+              ? "Codex가 작성한 질문입니다. 답변과 계획은 사람이 검토합니다."
+              : "현재는 데모용 공통 질문입니다. 위 Codex 버튼으로 실제 질문을 작성할 수 있습니다."}
           </p>
         </>
       ) : run.status === "awaiting_decision" ? (
