@@ -43,7 +43,13 @@ API와 개발 서버를 모두 실행한 뒤 `CHROMIUM_PATH=/usr/bin/chromium np
 
 로컬 데모 기록은 이 브라우저에만 저장되며 최근 20개까지 유지됩니다. 두 모드 모두 실제 AI 실행과 코드 생성은 수행하지 않습니다. 민감한 정보나 자격 증명을 요구사항에 넣지 마세요.
 
-작업은 별도 브랜치에서 진행하고 PR로 검토합니다. 주요 결정은 `docs/architecture.md`, 개발 규칙은 `AGENTS.md`에 기록합니다.
+작업은 검증 후 main에 직접 커밋·push합니다. 주요 결정은 `docs/architecture.md`, 개발 규칙은 `AGENTS.md`에 기록합니다.
+
+## 실행 데모 영상
+
+[한국어 자막이 포함된 데모 영상 보기·다운로드](https://raw.githubusercontent.com/yth1209/ArkWork/main/docs/demo/arkwork-demo.mp4)
+
+요구사항 입력 → 계획 승인 → 서버 큐 진행 → 결과 요약 다운로드 → 새로고침 후 기록 재조회를 실제 브라우저에서 녹화했습니다. 실제 AI 호출·코드 생성이 없는 서버 모의 실행입니다. 녹화 재현 방법은 [데모 안내](docs/demo/README.md)를 참고하세요.
 
 ## 상세 기획
 
